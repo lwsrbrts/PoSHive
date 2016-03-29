@@ -1,5 +1,5 @@
 Enum HeatingMode {
-    # Defines the colour modes that can be set on the light.
+    # Defines the heating modes that can be set.
     OVERRIDE
     SCHEDULE
     MANUAL
@@ -98,7 +98,7 @@ Class Hive {
         Try {
             # Tailored to my own Receiver - yours is different, I'll work on making this
             # dynamic once I get the damned request to work!
-            $Response = Invoke-RestMethod -Method Put -Uri "$($this.ApiUrl)/users/$($this.Username)/widgets/climate/::21e:5e09:20e:268b/control" -Body (ConvertTo-Json $Settings) -WebSession $this.ApiSessionCookie
+            $Response = Invoke-RestMethod -Method Put -Uri "$($this.ApiUrl)/users/$($this.Username)/widgets/climate/[Thermostat deviceID]/control" -Body (ConvertTo-Json $Settings) -WebSession $this.ApiSessionCookie
 
             Return $Response
         }
