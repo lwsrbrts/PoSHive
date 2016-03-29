@@ -29,7 +29,7 @@ $h.Login()
 $h.GetClimate()
 ```
 
-## Get the current temperature - not very accurate, Thermostat device is better.
+## Get the current temperature from Thermostat (for accuracy)
 ```powershell
 $h.GetTemperature()
 ```
@@ -39,8 +39,7 @@ $h.GetTemperature()
 $h.SetTemperature(21)
 ```
 
-## NOT WORKING YET
-## Change the heating mode to one of Enum [HeatingMode]
+## Change the heating mode to one of Enum [HeatingMode] - not working yet :(
 ```powershell
 $h.SetHeatingMode('OFF')
 ```
