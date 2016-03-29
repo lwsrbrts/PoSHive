@@ -14,23 +14,36 @@ Import the class in to PowerShell using Import-Module
 `Import-Module D:\PoSHive\PoSHive.ps1
 
 # Instantiate the class and assign to an object
-`$h = [Hive]::new('user@domain.com', 'myhivewebsitepassword')
-
-# Log in
-`$h.Login()
+```powershell
+$h = [Hive]::new('user@domain.com', 'myhivewebsitepassword')
+```
+# Log in to the Hive site
+```powershell
+$h.Login()
+```
 
 # Get details about the climate in your house
-`$h.GetClimate()
+```powershell
+$h.GetClimate()
+```
 
 # Get the current temperature - not very accurate, Thermostat device is better.
-`$h.GetTemperature()
+```powershell
+$h.GetTemperature()
+```
 
 # Set the temperature (automatically sets heating mode to MANUAL)
-`$h.SetTemperature(21)
+```powershell
+$h.SetTemperature(21)
+```
 
-# NOT WORKING
+# NOT WORKING YET
 # Change the heating mode to one of Enum [HeatingMode]
-`$h.SetHeatingMode('OFF')
+```powershell
+$h.SetHeatingMode('OFF')
+```
 
 # Be nice and log out/destroying ApiSession and associated cookie.
-`$h.Logout()
+```powershell
+$h.Logout()
+```
