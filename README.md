@@ -10,40 +10,42 @@ If the temperature outside is less than 10 degrees, the inside temperature is le
 
 Monitor tweets from an account and set the temperature based on the tweet.
 
-Import the class in to PowerShell using Import-Module
-`Import-Module D:\PoSHive\PoSHive.ps1
+##Import the class in to PowerShell using Import-Module
+```powershell
+Import-Module D:\PoSHive\PoSHive.ps1
+```
 
-# Instantiate the class and assign to an object
+## Instantiate the class and assign to an object
 ```powershell
 $h = [Hive]::new('user@domain.com', 'myhivewebsitepassword')
 ```
-# Log in to the Hive site
+## Log in to the Hive site
 ```powershell
 $h.Login()
 ```
 
-# Get details about the climate in your house
+## Get details about the climate in your house
 ```powershell
 $h.GetClimate()
 ```
 
-# Get the current temperature - not very accurate, Thermostat device is better.
+## Get the current temperature - not very accurate, Thermostat device is better.
 ```powershell
 $h.GetTemperature()
 ```
 
-# Set the temperature (automatically sets heating mode to MANUAL)
+## Set the temperature (automatically sets heating mode to MANUAL)
 ```powershell
 $h.SetTemperature(21)
 ```
 
-# NOT WORKING YET
-# Change the heating mode to one of Enum [HeatingMode]
+## NOT WORKING YET
+## Change the heating mode to one of Enum [HeatingMode]
 ```powershell
 $h.SetHeatingMode('OFF')
 ```
 
-# Be nice and log out/destroying ApiSession and associated cookie.
+## Be nice and log out/destroying ApiSession and associated cookie.
 ```powershell
 $h.Logout()
 ```
