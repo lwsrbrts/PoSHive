@@ -65,10 +65,15 @@ Class Hive {
         }
     }
 
-    [psobject] GetTemperature() {
+    [string] GetTemperature() {
         Try {
-            $Response = Invoke-RestMethod -Method Get -Uri "$($this.ApiUrl)/users/$($this.Username)/widgets/temperature" -WebSession $this.ApiSessionCookie
-            Return $Response
+            # Less accurate
+            #$Response = Invoke-RestMethod -Method Get -Uri "$($this.ApiUrl)/users/$($this.Username)/widgets/temperature" -WebSession $this.ApiSessionCookie
+            
+            # More accurate
+            $Response = Invoke-RestMethod -Method Get -Uri "$($this.ApiUrl)/users/$($this.Username)/hubs/$($this.hubIds)/devices" -WebSession $this.ApiSessionCookie
+            [string] $TemperatureValue = ($Response | Where-Object {$_.name -eq 'Receiver'}).channels.temperature
+            Return [string] "$($TemperatureValue)$([char] 176)C"
         }
         Catch {
             Return $_
@@ -129,7 +134,7 @@ Class Hive {
         }
     }
 }
-
+<#
 # Instantiate the Hive class with your Hive username (email address) and password.
 $h = [Hive]::new('user@domain.com', 'myhivewebsitepassword')
 
@@ -151,3 +156,4 @@ $h.SetHeatingMode('OFF')
 
 # Be nice and log out/destroying ApiSession and associated cookie.
 $h.Logout()
+#>
