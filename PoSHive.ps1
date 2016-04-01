@@ -8,40 +8,40 @@ Enum HeatingMode {
 
 Class Hive {
 
-    #[uri]$ApiUrl = "https://api.prod.bgchprod.info/api" - doesn't work (SSL cert issue?) - maybe it can be overridden?
-    [uri]$ApiUrl = "https://api.bgchlivehome.co.uk/v5"
+    [uri]$ApiUrl = "https://api-prod.bgchprod.info/omnia/" # APIv6.1
     [ValidateLength(4,100)][string] $Username
     [ValidateLength(4,100)][string] $Password
-    [string] $ApiSession
+    [string] $ApiSessionId
     [string] $Agent = 'PoSHive (Alpha) - lewisroberts.com'
-    [string[]] $hubIds
-    $ApiSessionCookie
+    [psobject] $Nodes
+    [hashtable] $Headers = @{
+        'Accept' = 'application/vnd.alertme.zoo-6.1+json'
+        'X-AlertMe-Client' = 'lewisroberts.com PoSHive 0.1 Alpha'
+        'Content-Type' = 'application/json'
+    }
     
     # Constructor
     Hive([string] $Username, [string] $Password) {
         $this.Username = $Username
         $this.Password = $Password
-        $this.ApiSessionCookie = New-Object Microsoft.PowerShell.Commands.WebRequestSession
     }
 
     [void] Login () {
-        $Settings = @{}
-        $Settings.Add("username", $this.Username)
-        $Settings.Add("password", $this.Password)
-        $Settings.Add("caller", $this.Agent)
-
+        # Construct the username password object that will be converted to JSON.
+        # This could really just be JSON but...POWAAAAASHELL.
+        $Settings = [psobject]@{
+            sessions = @(
+                @{
+                    username = $this.Username
+                    password = $this.Password
+                }
+             )
+        }
         Try {
-            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/login" -Body $Settings -ErrorAction Stop
-            $this.ApiSession = $Response.ApiSession
-            $this.hubIds = $Response.hubIds
-
-            $Cookie = New-Object System.Net.Cookie 
-    
-            $Cookie.Name = "ApiSession"
-            $Cookie.Value = $this.ApiSession
-            $Cookie.Domain = $this.ApiUrl.Host
-            
-            $this.ApiSessionCookie.Cookies.Add($Cookie)
+            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/auth/sessions" -Body (ConvertTo-Json $Settings) -Headers $this.Headers -ErrorAction Stop
+            $this.ApiSessionId = $Response.sessions.id
+            $this.Headers.Add('X-Omnia-Access-Token', $this.ApiSessionId)
+            $this.Nodes = $this.GetClimate()
         }
         Catch {
             Write-Error $_            
@@ -49,41 +49,36 @@ Class Hive {
     }
 
     [psobject] Logout() {
+        If (-not $this.ApiSessionId) {Return "No ApiSessionId - must log in first."}
         Try {
-            $Response = Invoke-WebRequest -Method Post -Uri "$($this.ApiUrl)/logout" -WebSession $this.ApiSessionCookie
-            If ($Response.StatusCode -ne 204) {
-                Write-Output "The log out request was not performed."
-                Return $Response
-            }
-            Else {
-                $this.ApiSession = $null
-                Return "Logged Out Successfully."
-            }
+            $Response = Invoke-RestMethod -Method Delete -Uri "$($this.ApiUrl)/auth/sessions/$($this.ApiSessionId)" -Headers $this.Headers
+            $this.ApiSessionId = $null
+            $this.Headers.Remove('X-Omnia-Access-Token')
+            Return "Logged Out Successfully."
         }
         Catch {
             Return $_
         }
     }
 
-    [string] GetTemperature() {
+    [psobject] GetTemperature() {
+        If (-not $this.ApiSessionId) {Return "No ApiSessionId - must log in first."}
         Try {
-            # Less accurate
-            #$Response = Invoke-RestMethod -Method Get -Uri "$($this.ApiUrl)/users/$($this.Username)/widgets/temperature" -WebSession $this.ApiSessionCookie
-            
-            # More accurate
-            $Response = Invoke-RestMethod -Method Get -Uri "$($this.ApiUrl)/users/$($this.Username)/hubs/$($this.hubIds)/devices" -WebSession $this.ApiSessionCookie
-            [string] $TemperatureValue = ($Response | Where-Object {$_.name -eq 'Receiver'}).channels.temperature
-            Return [string] "$($TemperatureValue)$([char] 176)C"
+            $Response = Invoke-RestMethod -Method Get -Uri "$($this.ApiUrl)/nodes" -Headers $this.Headers
+            $this.Nodes = $Response.nodes
+            $Temperature = [Math]::Round($Response.nodes.attributes.temperature.reportedValue, 1)
+            Return $Temperature
         }
         Catch {
             Return $_
         }
     }
 
-    #<#
+    #<# Only nodes for now.
     [psobject] GetClimate() {
+        If (-not $this.ApiSessionId) {Return "No ApiSessionId - must log in first."}
         Try {
-            $Response = Invoke-RestMethod -Method Get -Uri "$($this.ApiUrl)/users/$($this.Username)/widgets/climate" -WebSession $this.ApiSessionCookie
+            $Response = Invoke-RestMethod -Method Get -Uri "$($this.ApiUrl)/nodes" -Headers $this.Headers
             Return $Response
         }
         Catch {
@@ -92,8 +87,8 @@ Class Hive {
     }
     #>
 
-    #<#
-    # Not working yet, but we're close.
+    <#
+    # Needs updating for APIv6
     [psobject] SetHeatingMode([HeatingMode] $Mode) {
 
         $Settings = @{
@@ -103,7 +98,7 @@ Class Hive {
         Try {
             # Tailored to my own Receiver - yours is different, I'll work on making this
             # dynamic once I get the damned request to work!
-            $Response = Invoke-RestMethod -Method Put -Uri "$($this.ApiUrl)/users/$($this.Username)/widgets/climate/[Thermostat deviceID]/control" -Body (ConvertTo-Json $Settings) -WebSession $this.ApiSessionCookie
+            $Response = Invoke-RestMethod -Method Put -Uri "$($this.ApiUrl)/" -Body (ConvertTo-Json $Settings) -WebSession $this.ApiSessionCookie
 
             Return $Response
         }
@@ -113,27 +108,37 @@ Class Hive {
     }
     #>
 
-    [psobject] SetTemperature([int]$targetTemperature) {
+    [psobject] SetTemperature([double]$targetTemperature) {
+        If (-not $this.ApiSessionId) {Return "No ApiSessionId - must log in first."}
+        # Get a sensible temp from the input value
+        $Temp = ([Math]::Round(($targetTemperature * 2), [System.MidpointRounding]::AwayFromZero)/2)
 
-        $Settings = @{}
-        $Settings.Add("temperature", $targetTemperature)
-        $Settings.Add("temperatureUnit", "C")
+        # Find out the correct node to send the temp to. Only the first Thermostat we find!
+        $Thermostat = $this.Nodes.nodes | Where-Object {$_.attributes.targetHeatTemperature} | Select -First 1
 
+        # Check the submitted temp doesn't exceed the permitted values
+        If (($Temp -gt $Thermostat.attributes.maxHeatTemperature.reportedValue) -or ($Temp -lt $Thermostat.attributes.minHeatTemperature.reportedValue)) {
+            Return "Submitted temperature value ($Temp) exceeds the permitted range ($($Thermostat.attributes.maxHeatTemperature.reportedValue) - $($Thermostat.attributes.minHeatTemperature.reportedValue))"
+        }
+
+        # This will be converted to JSON. I suppose it could just be JSON but...meh.
+        $Settings = [psobject]@{
+            nodes = @(
+                @{
+                    attributes = @{targetHeatTemperature = @{targetValue = $Temp}}
+                }
+             )
+        }
         Try {
-            $Response = Invoke-WebRequest -Method Post -Uri "$($this.ApiUrl)/users/$($this.Username)/widgets/climate/targetTemperature" -Body $Settings -WebSession $this.ApiSessionCookie
-            If ($Response.StatusCode -ne 204) {
-                Write-Output "The request to set temperature was not performed."
-                Return $Response
-            }
-            Else {
-                Return "Desired temperature ($($targetTemperature.ToString())$([char] 176 )C) set successfully."
-            }
+            $Response = Invoke-RestMethod -Method Put -Uri "$($this.ApiUrl)/nodes/$($Thermostat.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+            Return "Desired temperature ($($targetTemperature.ToString())$([char] 176 )C) set successfully."
         }
         Catch {
             Return $_
         }
     }
 }
+
 <#
 # Instantiate the Hive class with your Hive username (email address) and password.
 $h = [Hive]::new('user@domain.com', 'myhivewebsitepassword')
