@@ -1,7 +1,7 @@
 Enum HeatingMode {
     <# Defines the heating modes that can be set.
-    # Boost should be a separate function as it sets different values
-    # to the heating mode.
+    # Boost should be a separate method as it sets different values
+    # to the SetHeatingMode method.
     #>
     SCHEDULE
     MANUAL
@@ -9,6 +9,9 @@ Enum HeatingMode {
 }
 
 Class Hive {
+    ##############
+    # PROPERTIES #
+    ##############
 
     [uri]$ApiUrl = "https://api-prod.bgchprod.info/omnia/" # APIv6.1
     [ValidateLength(4,100)][string] $Username
@@ -22,13 +25,20 @@ Class Hive {
         'Content-Type' = 'application/json'
     }
     
-    # Constructor
+    ###############
+    # CONSTRUCTOR #
+    ###############
+
     Hive([string] $Username, [string] $Password) {
         $this.Username = $Username
         $this.Password = $Password
     }
 
-    # Login - could do this in the constructor but makes sense to have it as a separate trapable action.
+    ###########
+    # METHODS #
+    ###########
+
+    # Login - could do this in the constructor but makes sense to have it as a separate method.
     [void] Login () {
 
         $Settings = [psobject]@{
@@ -157,7 +167,7 @@ Class Hive {
         the existence of the targetHeatTemperature attribute on a device).
         It therefore DOES NOT support multi-zone/thermostat Hive installations, sorry!
     #>
-    [psobject] SetTemperature([double]$targetTemperature) {
+    [psobject] SetTemperature([double] $targetTemperature) {
         If (-not $this.ApiSessionId) {Throw "No ApiSessionId - must log in first."}
         
         # Get a sensible temp from the input value
@@ -171,7 +181,7 @@ Class Hive {
 
         # Check the submitted temp doesn't exceed the permitted values
         If (($Temp -gt $Thermostat.attributes.maxHeatTemperature.reportedValue) -or ($Temp -lt $Thermostat.attributes.minHeatTemperature.reportedValue)) {
-            Throw "Submitted temperature value ($Temp) exceeds the permitted range ($($Thermostat.attributes.maxHeatTemperature.reportedValue) -> $($Thermostat.attributes.minHeatTemperature.reportedValue))"
+            Throw "Submitted temperature value ($Temp) exceeds the permitted range ($($Thermostat.attributes.minHeatTemperature.reportedValue) -> $($Thermostat.attributes.maxHeatTemperature.reportedValue))"
         }
 
         # Check the heating is not in OFF state
