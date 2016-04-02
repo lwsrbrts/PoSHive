@@ -1,10 +1,13 @@
 # PoSHive 0.1 - Alpha
 A PowerShell 5 class to control your British Gas Hive system.
 
-> **This project is not sanctioned by or affiliated with British Gas in any way.** 
+> **This project is not sanctioned by or affiliated with British Gas in any way.**
 
-The idea is to be able to use PowerShell scripting to exert more powerful logic control over the state of your heating system.
-In its basic form, it allows you to get information about the system (to perform additional actions) and set the heating mode of the system as well as the temperature. If you find a bug or have a feature request, please open a new Issue and let me know so I can resolve it.
+
+## Purpose
+
+The purpose of this class is to enable you to use PowerShell (v5) scripting to exert more powerful logic control over the state of your heating system.
+In its basic form, it allows you to set the heating mode of the system and the temperature, including the Boost option. Additionally, it allows you to more easily expose information about the system and its settings to enable you to perform powerful logic operations. If you find a bug or have a feature request, please open a new Issue and let me know so I can resolve it.
 
 ## Multi-zone systems
 The class **does not currently support multi-zone/thermostat Hive installations** (I don't have a multi-zone Hive system, sorry). Most of the setting methods will only retrieve the first thermostat identified in the system, in some cases, this might not even be the primary one you want to control if you have a multi-thermostat system - if you can help, feel free to branch and submit a pull request when you're happy to or you could send me the JSON response from a Get to /omnia/nodes and I'll see how to determine the correct thermostat.
@@ -86,3 +89,9 @@ The session will automatically expire from the Hive API in approx 20 minutes but
 ```powershell
 $h.Logout()
 ```
+
+## Mentions
+An honourable mention goes out to https://github.com/aklambeth for the inspiration and advising to implement using the v6 API.
+
+## Questions?
+If you have questions, comments, enhancement ideas - [post an issue.](/issues)
