@@ -39,28 +39,28 @@ $h = [Hive]::new('user@domain.com', 'myhivewebsitepassword')
 ### Log in to the Hive API
 Simply logs in to the Hive API. A session id is assigned by the Hive API that is used for subsequent communications and acts as your authorisation token.
 ```powershell
-$h.Login()
+$h.Login() # Returns nothing but check $h.ApiSessionId for success.
 ```
 
 ### Get details about the nodes (devices)
 Doesn't provide much useful information but I leave the method open for use for example so that you can implement your own logic based on the values of attributes. Use $h.Nodes (a call to GetClimate() is made regularly and stored in this class variable).
 ```powershell
-$h.GetClimate()
+$h.GetClimate() # Returns a [PSObject]
 ```
 
 ### Get the current temperature from Thermostat (formatted with symbols)
 ```powershell
-$h.GetTemperature($true) # Return 21.1°C
+$h.GetTemperature($true) # Returns 21.1°C
 ```
 ### Get the current temperature from Thermostat (unformatted)
 ```powershell
-$h.GetTemperature($false) # Return 21.1
+$h.GetTemperature($false) # Returns 21.1
 ```
 
 ### Set the temperature
 Only works if heating mode is not currently **OFF**. Yes, I could turn the heating on in order to set the temperature but to what mode? That's up to you so I left this.
 ```powershell
-$h.SetTemperature(21)
+$h.SetTemperature(21.5) # Returns "Desired temperature 21.5°C set successfully."
 ```
 
 ### Change the heating mode
@@ -69,6 +69,7 @@ Takes a parameter of type `[HeatingMode]` `OFF` | `MANUAL` | `SCHEDULE`
 $h.SetHeatingMode('OFF')
 $h.SetHeatingMode('MANUAL')
 $h.SetHeatingMode('SCHEDULE')
+# Returns "Heating mode set to [mode] successfully."
 ```
 
 ### Boost the heating system for the defined time.
@@ -82,12 +83,19 @@ $h.SetBoostMode('THREE')
 $h.SetBoostMode('FOUR')
 $h.SetBoostMode('FIVE')
 $h.SetBoostMode('SIX')
+# Returns "BOOST mode activated for [n] minutes at 22°C"
+```
+
+### Cancel a currently active boost
+If the current heating mode is set to BOOST, turn it off. This reverts the system to its previous configuration using the `previousConfiguration` value stored for the Thermostat when BOOST was activated. ie. If it was MANUAL 20°C, it'll be returned to MANUAL 20°C.
+```powershell
+$h.CancelBoostMode() # Returns "Boost mode stopped."
 ```
 
 ### Log out
 The session will automatically expire from the Hive API in approx 20 minutes but if you're performing just a few actions, log out anyway.
 ```powershell
-$h.Logout()
+$h.Logout() # Returns "Logged out successfully."
 ```
 
 ## Mentions

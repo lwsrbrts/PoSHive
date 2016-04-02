@@ -58,9 +58,13 @@ Class Hive {
         Write-Error "An error occurred in the execution of the request:`r`nError Code:`t$($r.errors.code)`r`nError Title:`t$($r.errors.title)" -ErrorAction Stop
     }
 
+    # Return errors and terminate execution 
+    hidden [void] ReturnError([string] $e) {
+        Write-Error $e -ErrorAction Stop
+    }
+
     # Login - could do this in the constructor but makes sense to have it as a separate method.
     [void] Login () {
-
         $Settings = [psobject]@{
             sessions = @(
                 @{
@@ -83,7 +87,7 @@ Class Hive {
 
     # Log out - essentially deletes the ApiSession from the API and nulls the ApiSessionId
     [psobject] Logout() {
-        If (-not $this.ApiSessionId) {Throw "No ApiSessionId - must log in first."}
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
         Try {
             $Response = Invoke-RestMethod -Method Delete -Uri "$($this.ApiUrl)/auth/sessions/$($this.ApiSessionId)" -Headers $this.Headers
             # Needs some error checking.
@@ -105,7 +109,7 @@ Class Hive {
         of an attribute.
     #>
     [psobject] GetClimate() {
-        If (-not $this.ApiSessionId) {Throw "No ApiSessionId - must log in first."}
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
         Try {
             $Response = Invoke-RestMethod -Method Get -Uri "$($this.ApiUrl)/nodes" -Headers $this.Headers -ErrorAction Stop
             Return $Response.nodes
@@ -125,7 +129,7 @@ Class Hive {
         Provide $false to get a simple decimal: eg. 21.1
     #>
     [psobject] GetTemperature([bool] $FormattedValue) {
-        If (-not $this.ApiSessionId) {Throw "No ApiSessionId - must log in first."}
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
         Try {
             $this.Nodes = $this.GetClimate()
             $Temperature = [Math]::Round($this.Nodes.attributes.temperature.reportedValue, 1)
@@ -147,7 +151,7 @@ Class Hive {
         It therefore DOES NOT support multi-zone/thermostat Hive installations, sorry!
     #>
     [psobject] SetHeatingMode([HeatingMode] $Mode) {
-        If (-not $this.ApiSessionId) {Throw "No ApiSessionId - must log in first."}
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
 
         # Update nodes
         $this.Nodes = $this.GetClimate()
@@ -194,7 +198,7 @@ Class Hive {
         It therefore DOES NOT support multi-zone/thermostat Hive installations, sorry!
     #>
     [psobject] SetTemperature([double] $targetTemperature) {
-        If (-not $this.ApiSessionId) {Throw "No ApiSessionId - must log in first."}
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
         
         # Get a sensible temp from the input value rounded to nearest half degree
         $Temp = ([Math]::Round(($targetTemperature * 2), [System.MidpointRounding]::AwayFromZero)/2)
@@ -207,12 +211,12 @@ Class Hive {
 
         # Check the submitted temp doesn't exceed the permitted values
         If (($Temp -gt $Thermostat.attributes.maxHeatTemperature.reportedValue) -or ($Temp -lt $Thermostat.attributes.minHeatTemperature.reportedValue)) {
-            Throw "Submitted temperature value ($Temp) exceeds the permitted range ($($Thermostat.attributes.minHeatTemperature.reportedValue) -> $($Thermostat.attributes.maxHeatTemperature.reportedValue))"
+            $this.ReturnError("Submitted temperature value ($Temp) exceeds the permitted range ($($Thermostat.attributes.minHeatTemperature.reportedValue) -> $($Thermostat.attributes.maxHeatTemperature.reportedValue))")
         }
 
         # Check the heating is not in OFF state
         If ($Thermostat.attributes.activeHeatCoolMode.reportedValue -eq 'OFF') {
-            Throw "Heating mode is currently OFF. Set to MANUAL or SCHEDULE first."
+            $this.ReturnError("Heating mode is currently OFF. Set to MANUAL or SCHEDULE first.")
         }
 
         # This will be converted to JSON. I suppose it could just be JSON but...meh.
@@ -237,19 +241,10 @@ Class Hive {
         Boosts the heating system for the defined time.
         The [BoostTime] Enum is used to ensure proper time values are submitted.
         Always boosts to 22°C - this is the same as the Hive site.
-        To cancel boosting:
-
-        $Hive.SetHeatingMode([HeatingMode] $Value)
-        ---AND---
-        $Hive.SetTemperature([double] $Value)
-
-        or allow the timer to run out.
         You can re-boost at any time but the timer starts again, obviously.
-        ENHANCEMENT: There is a "previousConfiguration" value that I will likely
-        implement in to a .CancelBoostMode() method.
     #>
     [psobject] SetBoostMode([BoostTime] $Duration) {
-        If (-not $this.ApiSessionId) {Throw "No ApiSessionId - must log in first."}
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
         
         # Update nodes
         $this.Nodes = $this.GetClimate()
@@ -300,7 +295,7 @@ Class Hive {
         BOOST was activated.
     #>
     [string] CancelBoostMode() {
-        If (-not $this.ApiSessionId) {Throw "No ApiSessionId - must log in first."}
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
         
         # Update nodes data
         $this.Nodes = $this.GetClimate()
@@ -310,7 +305,7 @@ Class Hive {
 
         # If the system isn't set to BOOST, return without doing anything.
         If ($Thermostat.attributes.activeHeatCoolMode.reportedValue -ne 'BOOST') {
-            Throw 'The current heating mode is not BOOST.'
+            $this.ReturnError("The current heating mode is not BOOST.")
         }
         
         Switch ($Thermostat.attributes.previousConfiguration.reportedValue.mode) {
