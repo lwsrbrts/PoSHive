@@ -94,4 +94,4 @@ $h.Logout()
 An honourable mention goes out to https://github.com/aklambeth for the inspiration and advising to implement using the v6 API.
 
 ## Questions?
-If you have questions, comments, enhancement ideas - [post an issue.](/issues)
+If you have questions, comments, enhancement ideas etc. [post an issue.](https://github.com/lwsrbrts/PoSHive/issues)
