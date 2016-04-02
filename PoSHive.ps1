@@ -46,6 +46,18 @@ Class Hive {
     # METHODS #
     ###########
 
+    # Convert Unix time in milliseconds to local datetime object.
+    hidden [datetime] ConvertUnixTime([long] $Milliseconds) {
+        Return [System.DateTimeOffset]::FromUnixTimeMilliseconds($Milliseconds).LocalDateTime
+    }
+
+    # Return errors and terminate execution 
+    hidden [void] ReturnError([System.Management.Automation.ErrorRecord] $e) {
+        $sr = [System.IO.StreamReader]::new($e.Exception.Response.GetResponseStream())
+        $r = ConvertFrom-Json ($sr.ReadToEnd())
+        Write-Error "An error occurred in the execution of the request:`r`nError Code:`t$($r.errors.code)`r`nError Title:`t$($r.errors.title)" -ErrorAction Stop
+    }
+
     # Login - could do this in the constructor but makes sense to have it as a separate method.
     [void] Login () {
 
@@ -65,7 +77,7 @@ Class Hive {
             $this.Nodes = $this.GetClimate()
         }
         Catch {
-            Throw $_.Exception.Response            
+            $this.ReturnError($_)
         }
     }
 
@@ -80,7 +92,8 @@ Class Hive {
             Return "Logged out successfully."
         }
         Catch {
-            Throw $_.Exception.Response
+            $this.ReturnError($_)
+            Return $null
         }
     }
 
@@ -98,7 +111,8 @@ Class Hive {
             Return $Response.nodes
         }
         Catch {
-            Throw $_.Exception.Response
+            $this.ReturnError($_)
+            Return $null
         }
     }
     #>
@@ -119,7 +133,8 @@ Class Hive {
             Else {Return $Temperature}
         }
         Catch {
-            Throw $_.Exception.Response
+            $this.ReturnError($_)
+            Return $null
         }
     }
 
@@ -164,8 +179,10 @@ Class Hive {
             Return "Heating mode set to $($Mode.ToString()) successfully."
         }
         Catch {
-            Throw $_.Exception.Response
+            $this.ReturnError($_)
+            Return $null
         }
+        
     }
 
     <#
@@ -211,7 +228,8 @@ Class Hive {
             Return "Desired temperature ($($targetTemperature.ToString())$([char] 176 )C) set successfully."
         }
         Catch {
-            Throw $_.Exception.Response
+            $this.ReturnError($_)
+            Return $null
         }
     }
 
@@ -270,9 +288,42 @@ Class Hive {
             Return "BOOST mode activated for $ApiDuration minutes at $($ApiTemperature.ToString())$([char] 176 )C"
         }
         Catch {
-            Throw $_.Exception.Response
+            $this.ReturnError($_)
+            Return $null
         }
     }
 
+    <#
+        If the current heating mode is set to BOOST, turn it off.
+        This reverts the system to its previous configuration using the
+        previousConfiguration value stored for the Thermostat when
+        BOOST was activated.
+    #>
+    [string] CancelBoostMode() {
+        If (-not $this.ApiSessionId) {Throw "No ApiSessionId - must log in first."}
+        
+        # Update nodes data
+        $this.Nodes = $this.GetClimate()
+
+        # Find out the correct node for the Thermostat.
+        $Thermostat = $this.Nodes | Where-Object {$_.attributes.targetHeatTemperature} | Select -First 1
+
+        # If the system isn't set to BOOST, return without doing anything.
+        If ($Thermostat.attributes.activeHeatCoolMode.reportedValue -ne 'BOOST') {
+            Throw 'The current heating mode is not BOOST.'
+        }
+        
+        Switch ($Thermostat.attributes.previousConfiguration.reportedValue.mode) {
+            AUTO { $this.SetHeatingMode('SCHEDULE') }
+            MANUAL {
+                $this.SetHeatingMode('MANUAL')
+                $this.SetTemperature($Thermostat.attributes.previousConfiguration.reportedValue.targetHeatTemperature)
+            }
+            OFF { $this.SetHeatingMode('OFF') }
+            Default {$this.SetHeatingMode('SCHEDULE')}
+        }
+
+        Return "Boost mode stopped."
+    }
 # END HIVE CLASS
 }
