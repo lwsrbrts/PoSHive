@@ -1,11 +1,19 @@
 Enum HeatingMode {
-    <# Defines the heating modes that can be set.
-    # Boost should be a separate method as it sets different values
-    # to the SetHeatingMode method.
-    #>
+    <# Defines the heating modes that can be set. #>
     SCHEDULE
     MANUAL
     OFF
+}
+
+Enum BoostTime {
+    <# Defines accepted boost durations in hours. #>
+    HALF
+    ONE
+    TWO
+    THREE
+    FOUR
+    FIVE
+    SIX
 }
 
 Class Hive {
@@ -57,7 +65,7 @@ Class Hive {
             $this.Nodes = $this.GetClimate()
         }
         Catch {
-            Write-Error $_            
+            Throw $_.Exception.Response            
         }
     }
 
@@ -72,12 +80,12 @@ Class Hive {
             Return "Logged out successfully."
         }
         Catch {
-            Return $_
+            Throw $_.Exception.Response
         }
     }
 
     <#
-        Get nodes (devices) data
+        Get nodes (devices) data.
         Still exposed as a usable method in the class but acts primarily
         as a helper method to keep the $this.Nodes variable fresh. Is usually called
         before any setting method that includes logic or is dependent on the state
@@ -86,11 +94,11 @@ Class Hive {
     [psobject] GetClimate() {
         If (-not $this.ApiSessionId) {Throw "No ApiSessionId - must log in first."}
         Try {
-            $Response = Invoke-RestMethod -Method Get -Uri "$($this.ApiUrl)/nodes" -Headers $this.Headers
+            $Response = Invoke-RestMethod -Method Get -Uri "$($this.ApiUrl)/nodes" -Headers $this.Headers -ErrorAction Stop
             Return $Response.nodes
         }
         Catch {
-            Return $_
+            Throw $_.Exception.Response
         }
     }
     #>
@@ -99,6 +107,8 @@ Class Hive {
         Does what it says on the tin. Returns the currently reported temperature
         value from the thermostat. Not likely to work as expected in multi-zone/thermostat
         Hive systems. Sorry.
+        Provide $true to get a formatted value: eg. 21.1°C
+        Provide $false to get a simple decimal: eg. 21.1
     #>
     [psobject] GetTemperature([bool] $FormattedValue) {
         If (-not $this.ApiSessionId) {Throw "No ApiSessionId - must log in first."}
@@ -109,7 +119,7 @@ Class Hive {
             Else {Return $Temperature}
         }
         Catch {
-            Return $_
+            Throw $_.Exception.Response
         }
     }
 
@@ -137,7 +147,6 @@ Class Hive {
             'MANUAL' {$ApiMode = 'HEAT'; $ApiScheduleLock = $true}
             'SCHEDULE' {$ApiMode = 'HEAT'; $ApiScheduleLock = $false}
             'OFF' {$ApiMode = 'OFF'; $ApiScheduleLock = $true}
-
         }
         $Settings = [psobject]@{
             nodes = @(
@@ -155,7 +164,7 @@ Class Hive {
             Return "Heating mode set to $($Mode.ToString()) successfully."
         }
         Catch {
-            Return $_
+            Throw $_.Exception.Response
         }
     }
 
@@ -170,7 +179,7 @@ Class Hive {
     [psobject] SetTemperature([double] $targetTemperature) {
         If (-not $this.ApiSessionId) {Throw "No ApiSessionId - must log in first."}
         
-        # Get a sensible temp from the input value
+        # Get a sensible temp from the input value rounded to nearest half degree
         $Temp = ([Math]::Round(($targetTemperature * 2), [System.MidpointRounding]::AwayFromZero)/2)
 
         # Update nodes
@@ -202,51 +211,68 @@ Class Hive {
             Return "Desired temperature ($($targetTemperature.ToString())$([char] 176 )C) set successfully."
         }
         Catch {
-            Return $_
+            Throw $_.Exception.Response
         }
     }
 
     <#
-        Boosts the heating system. NOT IMPLEMENTED YET.
-        May need to know the previous system state prior to boosting?
-        Is there an accepted boost temperature? Is that derived from the current
-        temperature or the target temperature?
-        How does it act if the heating mode is OFF?
-        Time in minutes is a parameter to this method.
-        Will need to refresh nodes and get current temp perhaps.
+        Boosts the heating system for the defined time.
+        The [BoostTime] Enum is used to ensure proper time values are submitted.
+        Always boosts to 22°C - this is the same as the Hive site.
+        To cancel boosting:
+
+        $Hive.SetHeatingMode([HeatingMode] $Value)
+        ---AND---
+        $Hive.SetTemperature([double] $Value)
+
+        or allow the timer to run out.
+        You can re-boost at any time but the timer starts again, obviously.
+        ENHANCEMENT: There is a "previousConfiguration" value that I will likely
+        implement in to a .CancelBoostMode() method.
     #>
-    [psobject] HeatBoost() {
-        Throw "Not implemented yet."
+    [psobject] SetBoostMode([BoostTime] $Duration) {
+        If (-not $this.ApiSessionId) {Throw "No ApiSessionId - must log in first."}
+        
+        # Update nodes
+        $this.Nodes = $this.GetClimate()
+
+        # Find out the correct node to send the temp to. Only the first Thermostat we find!
+        $Thermostat = $this.Nodes | Where-Object {$_.attributes.targetHeatTemperature} | Select -First 1
+
+        $ApiDuration = $null # Creating so it's there!
+        $ApiTemperature = 22 # This is the same Boost default temp as the Hive site.
+
+        Switch ($Duration) {
+            'HALF' {$ApiDuration = 30}
+            'ONE' {$ApiDuration = 60}
+            'TWO' {$ApiDuration = 120}
+            'THREE' {$ApiDuration = 180}
+            'FOUR' {$ApiDuration = 240}
+            'FIVE' {$ApiDuration = 300}
+            'SIX' {$ApiDuration = 360}
+        }
+
+        # JSON structure in a PSObject
+        $Settings = [psobject]@{
+            nodes = @(
+                @{
+                    attributes = @{
+                        activeHeatCoolMode = @{targetValue = 'BOOST'}
+                        scheduleLockDuration = @{targetValue = $ApiDuration}
+                        targetHeatTemperature = @{targetValue = $ApiTemperature}
+                    }
+                }
+             )
+        }
+
+        Try {
+            $Response = Invoke-RestMethod -Method Put -Uri "$($this.ApiUrl)/nodes/$($Thermostat.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+            Return "BOOST mode activated for $ApiDuration minutes at $($ApiTemperature.ToString())$([char] 176 )C"
+        }
+        Catch {
+            Throw $_.Exception.Response
+        }
     }
 
 # END HIVE CLASS
 }
-
-
-
-<#
-# Instantiate the Hive class with your Hive username (email address) and password.
-$h = [Hive]::new('user@domain.com', 'myhivewebsitepassword')
-
-# Log in
-$h.Login()
-
-# Get details about nodes making up the system (Receiver, Hub, Thermostats)
-$h.GetClimate()
-
-## Get the current temperature
-# .GetTemperature($true) gives a formatted value (with symbol and letter) to one decimal place.
-# .GetTemperature($false) gives simply a number to one decimal place.
-$h.GetTemperature($true)
-
-# Set the temperature (automatically sets heating mode to MANUAL)
-$h.SetTemperature(21)
-
-# Change the heating mode to one of Enum [HeatingMode]
-$h.SetHeatingMode('OFF')
-$h.SetHeatingMode('MANUAL')
-$h.SetHeatingMode('SCHEDULE')
-
-# Be nice and log out/destroying ApiSession and associated cookie.
-$h.Logout()
-#>
