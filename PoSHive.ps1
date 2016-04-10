@@ -63,7 +63,6 @@ Class Hive {
         t29 = [System.Drawing.Color]::FromArgb(200,36,50)
         t30 = [System.Drawing.Color]::FromArgb(195,35,52)
     }
-
     
     ###############
     # CONSTRUCTOR #
