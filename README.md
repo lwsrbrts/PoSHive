@@ -1,8 +1,11 @@
-# PoSHive 0.1 - Alpha
+# PoSHive 1.0
 A PowerShell 5 class to control your British Gas Hive system.
 
 > **This project is not sanctioned by or affiliated with British Gas in any way.**
 
+##Release Notes
+
+**1.0 release** - first release of the PoSHive class. Allows getting, setting temperature, setting heating mode to auto, manual or off. Turning on or cancelling of Boost mode.
 
 ## Purpose
 
@@ -22,11 +25,14 @@ Some examples of use (and the reasons why I did this)
 * Set your Philips Hue Light colour based on the current temperature in the home - why not use my PoSHue PowerShell class? ;)
 * Have as many "on and off times" as you like - you're not limited by anything.
 
+ ![alt-text](http://www.lewisroberts.com/wp-content/uploads/2016/04/poshivebasics.gif "PoSHive basics")
+
 Obviously these are example uses, this class simply provides the ability to control your heating system by abstracting the British Gas Hive APIv6.1 in to PowerShell classes/methods.
 ## Using the class
 
 ### Import the class in to PowerShell session
 ```powershell
+Add-Type -AsemblyName System.Drawing # Required due to use of System.Drawing.Color
 Import-Module D:\PoSHive\PoSHive.ps1
 ```
 
