@@ -85,6 +85,7 @@ Class Hive {
     # Return errors and terminate execution 
     hidden [void] ReturnError([System.Management.Automation.ErrorRecord] $e) {
         $sr = [System.IO.StreamReader]::new($e.Exception.Response.GetResponseStream())
+        $sr.BaseStream.Position = 0
         $r = ConvertFrom-Json ($sr.ReadToEnd())
         Write-Error "An error occurred in the execution of the request:`r`nError Code:`t$($r.errors.code)`r`nError Title:`t$($r.errors.title)" -ErrorAction Stop
     }
@@ -351,5 +352,114 @@ Class Hive {
 
         Return "Boost mode stopped."
     }
+
+    # Get information about current holiday mode
+    [string] GetHolidayMode() {
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        
+        # Update nodes data
+        $this.Nodes = $this.GetClimate()
+
+        # Find out the correct destination for holiday mode settings.
+        $Receiver = $this.Nodes | Where-Object {$_.attributes.holidayMode.targetValue} | Select -First 1
+        $Holiday = $Receiver.attributes.holidayMode
+
+        #Init variables...
+        $Start = $End = $Temp = $null
+
+        If ($Holiday.reportedValue.enabled -eq $true) {
+            $Start = [DateTime]::SpecifyKind($Holiday.reportedValue.startDateTime, [DateTimeKind]::Utc)
+            $End = [DateTime]::SpecifyKind($Holiday.reportedValue.endDateTime, [DateTimeKind]::Utc)
+            $Temp = [int] $Holiday.targetValue.targetHeatTemperature
+        }
+        ElseIf ($Holiday.reportedValue.enabled -eq $false) {
+            Return "Holiday mode is not currently enabled."
+        }
+        Else {
+            $this.ReturnError("Unable to determine the current settings of holiday mode.")
+        }
+
+        Return "Holiday mode is enabled from $($Start.ToLocalTime().ToString()) -> $($End.ToLocalTime().ToString()) @ $Temp$([char]176)C."        
+    }
+
+    
+    # Enable holiday mode, providing a start and end date and temperature
+    [string] SetHolidayMode([datetime] $StartDateTime, [datetime] $EndDateTime, [int] $Temperature) {
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        
+        # Update nodes data
+        $this.Nodes = $this.GetClimate()
+
+        # Find out the correct destination for holiday mode settings.
+        $Receiver = $this.Nodes | Where-Object {$_.attributes.holidayMode.targetValue} | Select -First 1
+
+        # Check the submitted temp doesn't exceed the permitted values
+        If ($Temperature -ge 15) {
+            Write-Warning -Message "Your chosen holiday temperature ($Temperature$([char]176)C) is quite warm. To change it, send the request again."
+        }
+
+        # Check the user didn't type the wrong value.
+        If ($Temperature -notin 1..32) {
+            $this.ReturnError("Your chosen holiday mode temperature exceeds the acceptable range (1$([char]176)C -> 32$([char]176)C)")
+        }
+
+        # The user will only ever define a local time but force it anyway.
+        $StartDateUTC = [DateTime]::SpecifyKind($StartDateTime, [DateTimeKind]::Local)
+        $EndDateUTC = [DateTime]::SpecifyKind($EndDateTime, [DateTimeKind]::Local)
+
+        $Settings = [psobject]@{
+            nodes = @(
+                @{
+                    attributes = @{
+                        holidayMode = @{
+                            targetValue = @{ 
+                                enabled = $true
+                                targetHeatTemperature = $Temperature
+                                startDateTime = (Get-Date $StartDateUTC -Format "yyyy-MM-ddTHH:mm:ssK")
+                                endDateTime = (Get-Date $EndDateUTC -Format "yyyy-MM-ddTHH:mm:ssK")
+                            }
+                        }
+                    }
+                }
+            )
+        }
+
+        Try {
+            $Response = Invoke-RestMethod -Method Put -Uri "$($this.ApiUrl)/nodes/$($Receiver.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+            Return "Holiday mode activated from $($StartDateTime.ToString()) -> $($EndDateTime.ToString()) @ $Temperature$([char]176)C."
+        }
+        Catch {
+            $this.ReturnError($_)
+            Return $null
+        }
+
+
+    }
+
+    # Cancel holiday mode, providing a start and end date and temperature
+    [string] CancelHolidayMode() {
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        
+        # Update nodes data
+        $this.Nodes = $this.GetClimate()
+
+        # Find out the correct destination for holiday mode settings.
+        $Receiver = $this.Nodes | Where-Object {$_.attributes.holidayMode.targetValue} | Select -First 1
+
+        $Settings = [psobject]@{
+            nodes = @( @{ attributes = @{ holidayMode = @{ targetValue = @{ enabled = $false } } } } )
+        }
+
+        Try {
+            $Response = Invoke-RestMethod -Method Put -Uri "$($this.ApiUrl)/nodes/$($Receiver.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+            Return "Holiday mode cancelled."
+        }
+        Catch {
+            $this.ReturnError($_)
+            Return $null
+        }
+    }
+
+
 # END HIVE CLASS
 }
