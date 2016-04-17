@@ -1,11 +1,11 @@
-# PoSHive 1.0
+# PoSHive 1.1
 A PowerShell 5 class to control your British Gas Hive system.
 
 > **This project is not sanctioned by or affiliated with British Gas in any way.**
 
 ##Release Notes
-
-**1.0 release** - first release of the PoSHive class. Allows getting, setting temperature, setting heating mode to auto, manual or off. Turning on or cancelling of Boost mode.
+ * **1.1 - Holiday** - Added methods to get, set and cancel holiday mode. Fixed a bug preventing error messages returning useful information.
+ * **1.0 - Release** - first release of the PoSHive class. Allows getting, setting temperature, setting heating mode to auto, manual or off. Turning on or cancelling of Boost mode.
 
 ## Purpose
 
@@ -96,6 +96,27 @@ $h.SetBoostMode('SIX')
 If the current heating mode is set to BOOST, turn it off. This reverts the system to its previous configuration using the `previousConfiguration` value stored for the Thermostat when BOOST was activated. ie. If it was MANUAL 20°C, it'll be returned to MANUAL 20°C.
 ```powershell
 $h.CancelBoostMode() # Returns "Boost mode stopped."
+```
+
+### Enable Holiday mode
+Turn on holiday mode. Requires a start and end date/time and temperature.
+It's important to check that the date time format and region settings are correct on your PC. The start date shown below will be 1st August 2016 in UK format but 8th January in US format.
+```powershell
+$Start = Get-Date "01-08-2016 13:00" # So long as the date time is parseable!
+$End = Get-Date "14-08-2016 14:00" # So long as the date time is parseable!
+$Hive.SetHolidayMode($Start, $End, 13) # Returns "Holiday mode activated from 01/08/2016 13:00:00 -> 14/08/2016 14:00:00 @ 13°C."
+```
+
+### Cancel holiday mode
+Cancels holiday mode.
+```powershell
+$Hive.CancelHolidayMode() # Returns "Holiday mode cancelled."
+```
+
+### Get holiday mode
+Gets the current status of holiday mode.
+```powershell
+$Hive.GetHolidayMode() # Returns eg. (if enabled) "Holiday mode is enabled from 01/08/2016 13:00:00 -> 14/08/2016 14:00:00 @ 13°C."
 ```
 
 ### Log out
