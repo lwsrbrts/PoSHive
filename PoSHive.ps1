@@ -25,7 +25,7 @@ Class Hive {
     [ValidateLength(4,100)][string] $Username
     [ValidateLength(4,100)][string] $Password
     [string] $ApiSessionId
-    hidden [string] $Agent = 'PoSHive (Alpha) - github.com/lwsrbrts/PoSHive'
+    hidden [string] $Agent = 'PoSHive 1.1 - github.com/lwsrbrts/PoSHive'
     [psobject] $Nodes
     hidden [hashtable] $Headers = @{
         'Accept' = 'application/vnd.alertme.zoo-6.1+json'
