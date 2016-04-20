@@ -12,8 +12,8 @@ A PowerShell 5 class to control your British Gas Hive system.
 The purpose of this class is to enable you to use PowerShell (v5) scripting to exert more powerful logic control over the state of your heating system.
 In its basic form, it allows you to set the heating mode of the system and the temperature, including the Boost option. Additionally, it allows you to more easily expose information about the system and its settings to enable you to perform powerful logic operations. If you find a bug or have a feature request, please open a new Issue and let me know so I can resolve it.
 
-## Multi-zone systems
-The class **does not currently support multi-zone/thermostat Hive installations** (I don't have a multi-zone Hive system, sorry). Most of the setting methods will only retrieve the first thermostat identified in the system, in some cases, this might not even be the primary one you want to control if you have a multi-thermostat system - if you can help, feel free to branch and submit a pull request when you're happy to or you could send me the JSON response from a Get to /omnia/nodes and I'll see how to determine the correct thermostat.
+## Multi-zone systems & hot water
+The class **does not currently support multi-zone/thermostat Hive installations or hot water** (I don't have a multi-zone Hive or the hot water system, sorry). Most of the setting methods will only retrieve the first thermostat identified in the system, in some cases, this might not even be the primary one you want to control if you have a multi-thermostat system - if you can help, feel free to branch and submit a pull request when you're happy to or you could send me the JSON response from a Get to /omnia/nodes (use `$h.GetClimate() | ConvertTo-Json`) and I'll see if I can determine the correct thermostat from the JSON output.
 
 ## Examples
 Some examples of use (and the reasons why I did this)
