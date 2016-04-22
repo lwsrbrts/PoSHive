@@ -386,22 +386,27 @@ Class Hive {
     # Enable holiday mode, providing a start and end date and temperature
     [string] SetHolidayMode([datetime] $StartDateTime, [datetime] $EndDateTime, [int] $Temperature) {
         If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+
+        # Ensure date times are correctly stated.
+        If ($StartDateTime -lt (Get-Date)) {$this.ReturnError("Start date and time is in the past.")}
+        If ($EndDateTime -lt (Get-Date)) {$this.ReturnError("End date and time is in the past.")}
+        If ($EndDateTime -lt $StartDateTime) {$this.ReturnError("End date is before start date.")}
+
+        # Check the user didn't type the wrong temp value.
+        If ($Temperature -notin 1..32) {
+            $this.ReturnError("Your chosen holiday mode temperature exceeds the acceptable range (1$([char]176)C -> 32$([char]176)C)")
+        }
         
-        # Update nodes data
-        $this.Nodes = $this.GetClimate()
-
-        # Find out the correct destination for holiday mode settings.
-        $Receiver = $this.Nodes | Where-Object {$_.attributes.holidayMode.targetValue} | Select -First 1
-
         # Check the submitted temp doesn't exceed the permitted values
         If ($Temperature -ge 15) {
             Write-Warning -Message "Your chosen holiday temperature ($Temperature$([char]176)C) is quite warm. To change it, send the request again."
         }
 
-        # Check the user didn't type the wrong value.
-        If ($Temperature -notin 1..32) {
-            $this.ReturnError("Your chosen holiday mode temperature exceeds the acceptable range (1$([char]176)C -> 32$([char]176)C)")
-        }
+        # Update nodes data
+        $this.Nodes = $this.GetClimate()
+
+        # Find out the correct destination for holiday mode settings.
+        $Receiver = $this.Nodes | Where-Object {$_.attributes.holidayMode.targetValue} | Select -First 1
 
         # The user will only ever define a local time but force it anyway.
         $StartDateUTC = [DateTime]::SpecifyKind($StartDateTime, [DateTimeKind]::Local)
@@ -436,7 +441,7 @@ Class Hive {
 
     }
 
-    # Cancel holiday mode, providing a start and end date and temperature
+    # Cancel holiday mode.
     [string] CancelHolidayMode() {
         If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
         
