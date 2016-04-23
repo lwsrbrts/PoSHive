@@ -25,7 +25,8 @@ Class Hive {
     [ValidateLength(4,100)][string] $Username
     [ValidateLength(4,100)][string] $Password
     [string] $ApiSessionId
-    hidden [string] $Agent = 'PoSHive 1.1 - github.com/lwsrbrts/PoSHive'
+    hidden [string] $Agent = 'PoSHive 1.1.1 - github.com/lwsrbrts/PoSHive'
+    [psobject] $User
     [psobject] $Nodes
     hidden [hashtable] $Headers = @{
         'Accept' = 'application/vnd.alertme.zoo-6.1+json'
@@ -95,7 +96,7 @@ Class Hive {
         Write-Error $e -ErrorAction Stop
     }
 
-    # Login - could do this in the constructor but makes sense to have it as a separate method.
+    # Login - could do this in the constructor but makes sense to have it as a separate method. May only want weather!
     [void] Login () {
         $Settings = [psobject]@{
             sessions = @(
@@ -111,6 +112,7 @@ Class Hive {
             $this.ApiSessionId = $Response.sessions.id
             $this.Headers.Add('X-Omnia-Access-Token', $this.ApiSessionId)
             $this.Nodes = $this.GetClimate()
+            $this.User = $this.GetUser()
         }
         Catch {
             $this.ReturnError($_)
@@ -437,8 +439,6 @@ Class Hive {
             $this.ReturnError($_)
             Return $null
         }
-
-
     }
 
     # Cancel holiday mode.
@@ -465,18 +465,53 @@ Class Hive {
         }
     }
 
-    [psobject] GetWeather([string] $Postcode) {
+    # Get user information for the logged in user. Data requested once at login time.
+    [psobject] GetUser() {
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
 
-        $Postcode = $Postcode.Replace(' ', '').ToUpper()
-        
         Try {
-            $Response = Invoke-RestMethod -Method Get -Uri "https://weather-prod.bgchprod.info/weather?postcode=$Postcode"
-            Return $Response.weather
+            $Response = Invoke-RestMethod -Method Get -Uri "$($this.ApiUrl)/users/" -Headers $this.Headers
+            Return $Response.users[0]
         }
         Catch {
             $this.ReturnError($_)
             Return $null
         }
+    }
+
+    # Get the current weather (temp, conditions) for the users' postcode location.
+    [psobject] GetWeather() {
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        $Postcode = $this.User.postcode
+        
+        Try {
+            $Response = Invoke-RestMethod -Method Get -Uri "https://weather-prod.bgchprod.info/weather?postcode=$Postcode"
+            Return $Response.weather | Select description, temperature
+        }
+        Catch {
+            $this.ReturnError($_)
+            Return $null
+        }
+    }
+
+    # Get the current weather (temp, conditions) for a specific postcode location.
+    # Make sure the postcode is accurate or you'll likely get an error. I don't validate it!
+    [psobject] GetWeather([string] $Postcode) {
+        $Postcode = $Postcode.Replace(' ', '').ToUpper()
+        
+        Try {
+            $Response = Invoke-RestMethod -Method Get -Uri "https://weather-prod.bgchprod.info/weather?postcode=$Postcode"
+            Return $Response.weather | Select description, temperature
+        }
+        Catch {
+            $this.ReturnError($_)
+            Return $null
+        }
+    }
+
+    # Get the outside weather temperature for the users' postcode location in °C
+    [int] GetWeatherTemperature() {
+        Return $this.GetWeather().temperature.value
     }
 
 # END HIVE CLASS
