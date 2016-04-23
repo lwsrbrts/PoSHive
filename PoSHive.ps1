@@ -25,7 +25,7 @@ Class Hive {
     [ValidateLength(4,100)][string] $Username
     [ValidateLength(4,100)][string] $Password
     [string] $ApiSessionId
-    hidden [string] $Agent = 'PoSHive 1.1.1 - github.com/lwsrbrts/PoSHive'
+    hidden [string] $Agent = 'PoSHive 1.1.2 - github.com/lwsrbrts/PoSHive'
     [psobject] $User
     [psobject] $Nodes
     hidden [hashtable] $Headers = @{
