@@ -4,8 +4,9 @@ A PowerShell 5 class to control your British Gas Hive system.
 > **This project is not sanctioned by or affiliated with British Gas in any way.**
 
 ##Release Notes
- * **1.1 - Holiday** - Added methods to get, set and cancel holiday mode. Fixed a bug preventing error messages returning useful information.
- * **1.0 - Release** - first release of the PoSHive class. Allows getting, setting temperature, setting heating mode to auto, manual or off. Turning on or cancelling of Boost mode.
+ * **1.1.1 - User** - User profile data (from the Hive site) is now an accessible class property ($h.User). Added methods to get outside weather conditions.
+ * **1.1.0 - Holiday** - Added methods to get, set and cancel holiday mode. Fixed a bug preventing error messages returning useful information.
+ * **1.0.0 - Release** - first release of the PoSHive class. Allows getting, setting temperature, setting heating mode to auto, manual or off. Turning on or cancelling of Boost mode.
 
 ## Purpose
 
@@ -40,6 +41,12 @@ Import-Module D:\PoSHive\PoSHive.ps1
 Takes two [string] parameters for username and password, in that order.
 ```powershell
 $h = [Hive]::new('user@domain.com', 'myhivewebsitepassword')
+```
+
+### Properties and methods
+If you want to see all of the available properties and methods in the class, get its members. Some methods may not be documented.
+```powershell
+$h | Get-Member
 ```
 
 ### Log in to the Hive API
@@ -117,6 +124,20 @@ $Hive.CancelHolidayMode() # Returns "Holiday mode cancelled."
 Gets the current status of holiday mode.
 ```powershell
 $Hive.GetHolidayMode() # Returns eg. (if enabled) "Holiday mode is enabled from 01/08/2016 13:00:00 -> 14/08/2016 14:00:00 @ 13°C."
+```
+
+### Get weather
+Gets the current status of the outside weather for the location specified in the users' Hive website profile (postcode).
+There is also an overload for GetWeather that allows you to enter a postcode. `$Hive.GetWeather([string] $Postcode)`
+```powershell
+$Hive.GetWeather() # Gets the weather for the users' location.
+$Hive.GetWeather('SW1A 0AA') # Specific postcode location.
+
+<# Returns [psobject]
+description    temperature
+-----------    -----------
+Partly Cloudy  @{unit=C; value=5.0}
+#>
 ```
 
 ### Log out
