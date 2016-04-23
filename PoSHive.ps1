@@ -25,7 +25,7 @@ Class Hive {
     [ValidateLength(4,100)][string] $Username
     [ValidateLength(4,100)][string] $Password
     [string] $ApiSessionId
-    hidden [string] $Agent = 'PoSHive 1.1.2 - github.com/lwsrbrts/PoSHive'
+    hidden [string] $Agent = 'PoSHive 1.2.0 - github.com/lwsrbrts/PoSHive'
     [psobject] $User
     [psobject] $Nodes
     hidden [hashtable] $Headers = @{
@@ -481,6 +481,71 @@ Class Hive {
     # Get the outside weather temperature for the users' postcode location in °C
     [int] GetWeatherTemperature() {
         Return $this.GetWeather().temperature.value
+    }
+
+    # Use this method to save your current schedule (as set on the Hive site) to a file.
+    # Specify a directory only - the file will be named HiveSchedule-yyyyMMddHHmm.json
+    [void] SaveHeatingScheduleToFile([System.IO.DirectoryInfo] $DirectoryPath) {
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $DirectoryPath.Exists) {$this.ReturnError("The path should already exist.")}
+
+        # Update nodes data
+        $this.Nodes = $this.GetClimate()
+
+        # Get the node that holds the schedule data.
+        $Receiver = $this.Nodes | Where-Object {$_.attributes.schedule}
+
+        # Create the correct json structure.
+        $Settings = [psobject]@{
+            nodes = @( @{ attributes = @{ schedule = @{ targetValue = $Receiver.attributes.schedule.reportedValue } } } )
+        }
+
+        # Create the file output path and name.
+        $File = [System.IO.Path]::Combine($DirectoryPath, "HiveSchedule-$(Get-Date -Format "yyyyMMdd-HHmm").json")
+
+        # Save the file to disk or error if it exists - let the user handle renaming/moving/deleting.
+        Try {
+            ConvertTo-Json -InputObject $Settings -Depth 99 | Out-File -FilePath $File -NoClobber
+        }
+        Catch {
+            $this.ReturnError("An error occurred saving the file.`r`n$_")
+        }
+    }
+
+    # Reads in a JSON file containing heating schedule data. It is recommended to save a copy of your current
+    # schedule first using SaveHeatingScheduleToFile('C:\')
+    [string] SetHeatingScheduleFromFile([System.IO.FileInfo] $FilePath) {
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not (Test-Path -Path $FilePath )) {$this.ReturnError("The file path supplied does not exist.")}
+
+        # Update nodes data
+        $this.Nodes = $this.GetClimate()
+
+        # Get the node that holds the schedule data.
+        $Receiver = $this.Nodes | Where-Object {$_.attributes.schedule}
+
+        $Settings = $null
+        
+        # Read in the schedule data from the file.
+        Try {
+            $Settings = ConvertFrom-Json -InputObject (Get-Content -Path $FilePath -Raw)
+        }
+        Catch {
+            $this.ReturnError("The file specified could not be parsed as valid JSON.`r`n$_")
+        }
+
+        # Seven days of events in the file?
+        If (((($Settings.nodes.attributes.schedule.targetValue).psobject.Members | Where {$_.MemberType -eq 'NoteProperty'}).count) -eq 7) {
+            Try {
+                $Response = Invoke-RestMethod -Method Put -Uri "$($this.ApiUrl)/nodes/$($Receiver.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+                Return "Schedule set successfully from $FilePath"
+            }
+            Catch {
+                $this.ReturnError($_)
+                Return $null
+            }
+        }
+        Else {Return "The schedule in the file must contain entries for all seven days."}
     }
 
 # END HIVE CLASS
