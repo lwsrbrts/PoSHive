@@ -465,6 +465,19 @@ Class Hive {
         }
     }
 
+    [psobject] GetWeather([string] $Postcode) {
+
+        $Postcode = $Postcode.Replace(' ', '').ToUpper()
+        
+        Try {
+            $Response = Invoke-RestMethod -Method Get -Uri "https://weather-prod.bgchprod.info/weather?postcode=$Postcode"
+            Return $Response.weather
+        }
+        Catch {
+            $this.ReturnError($_)
+            Return $null
+        }
+    }
 
 # END HIVE CLASS
 }
