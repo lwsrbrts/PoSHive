@@ -4,8 +4,8 @@ A PowerShell 5 class to control your British Gas Hive (heating) system.
 > **This project is not sanctioned by or affiliated with British Gas in any way.**
 
 ##Release Notes
- * **1.2.0 - Scheduler** - 23/04/2016 - Functions for saving/setting heating schedules to/from a JSON file.
- * **1.1.2 - Color[sic]** - 22/04/2016 - Removed the reliance on System.Drawing.Colour assembly being loaded for use in this class. Moved it to PoSHue.
+ * [**1.2.0 - Scheduler**](https://github.com/lwsrbrts/PoSHive/releases/tag/v1.2.0) - 23/04/2016 - Functions for saving/setting heating schedules to/from a JSON file.
+ * **1.1.2 - Color[sic]** - 22/04/2016 - Removed the reliance on System.Drawing.Color assembly being loaded for use in this class. Moved it to PoSHue.
  * **1.1.1 - User** - 22/04/2016 - User profile data (from the Hive site) is now an accessible class property ($h.User). Added methods to get outside weather conditions.
  * **1.1.0 - Holiday** - 14/04/2016 - Added methods to get, set and cancel holiday mode. Fixed a bug preventing error messages returning useful information.
  * **1.0.0 - Release** - 07/04/2016 - first release of the PoSHive class. Allows getting, setting temperature, setting heating mode to auto, manual or off. Turning on or cancelling of Boost mode.
