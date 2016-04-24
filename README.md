@@ -36,7 +36,19 @@ Some examples of use (and the reasons why I did this)
 Obviously these are example uses, this class simply provides the ability to control your heating system by abstracting the British Gas Hive APIv6.1 in to PowerShell classes/methods.
 ## Using the class
 
+### Install/download the class
+The class is published on the [PowerShell Gallery](https://www.powershellgallery.com/packages/PoSHive/) site under the name `PoSHive`. This makes it simple to install.
+```powershell
+Install-Module -Name PoSHive
+```
+You can always just download the latest [release](https://github.com/lwsrbrts/PoSHive/releases) and copy the `PoSHive.ps1` file to an appropriate folder.
+
 ### Import the class in to PowerShell session
+If you have installed the class from the PowerShell Gallery, use:
+```powershell
+Import-Module -Name PoSHive
+```
+If however you have copied the file to a folder, use:
 ```powershell
 Import-Module D:\PoSHive\PoSHive.ps1
 ```
