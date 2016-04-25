@@ -10,7 +10,8 @@ Install-Module -Name PoSHive
 Or [download from the releases](https://github.com/lwsrbrts/PoSHive/releases) page.
 
 ##Release Notes
- * [**1.2.0 - Scheduler**](https://github.com/lwsrbrts/PoSHive/releases/tag/v1.2.0) - 23/04/2016 - Functions for saving/setting heating schedules to/from a JSON file.
+ * [**1.3.0 - Advance**](https://github.com/lwsrbrts/PoSHive/releases/tag/v1.3.0) - 25/04/2016 - Added method for advancing the heating system to the next event.
+ * [**1.2.0 - Scheduler**](https://github.com/lwsrbrts/PoSHive/releases/tag/v1.2.0) - 23/04/2016 - Methods for saving/setting heating schedules to/from a JSON file.
  * **1.1.2 - Color[sic]** - 22/04/2016 - Removed the reliance on System.Drawing.Color assembly being loaded for use in this class. Moved it to PoSHue.
  * **1.1.1 - User** - 22/04/2016 - User profile data (from the Hive site) is now an accessible class property ($h.User). Added methods to get outside weather conditions.
  * **1.1.0 - Holiday** - 14/04/2016 - Added methods to get, set and cancel holiday mode. Fixed a bug preventing error messages returning useful information.
@@ -22,7 +23,7 @@ The class allows you to set most if not all of the same functionality as provide
 
 ## What can't it do?
 ### Hot Water
-The class **does not currently support Hot Water systems** - I have a combi-boiler with on-demand hot water so I don't have a Hive hot water system and so can't develop for it unfortunately. If you can help, feel free to branch/fork and submit a pull request when you're happy to.<br/> *If you would REALLY like me to develop for these features and you don't have the skills in PowerShell, you can share your login with me and I will develop using that access. I realise that's a big ask of anyone but I'm trustworthy and only interested in improving PoSHive for everyone, not messing up your heating/hot water system.*
+The class **does not currently support Hot Water systems** - I have a combi-boiler with on-demand hot water so I don't have a Hive hot water system and so can't develop for it unfortunately. In some cases, the code I use to determine the "device" to send commands to may conflict with the hot water system and or completely fail or cause unknows side effects. This is a side-effect of not having access to a hive system with hot water as I cannot see the device configuration to filter out the hot water system. I can detect if it's a hot water supporting system or not and completely prevent interaction but who knows, it "may" work as-is, I just don't know. If you can help, feel free to branch/fork and submit a pull request when you're happy to.<br/> *If you would REALLY like me to develop for these features and you don't have the skills in PowerShell, you can share your login with me and I will develop using that access. I realise that's a big ask of anyone but I'm trustworthy and only interested in improving PoSHive for everyone, not messing up your heating/hot water system.*
 ### Multi-zone Systems
 The class **does not currently support multi-zone/thermostat Hive installations** - I'm not currently blessed with a large enough house to require a multi-zone Hive system so unfortunately, I'm not able to develop for this. Honestly, this is the biggest concern for me in terms of PoSHive being widely adopted as I have to make certain assumptions in the code about the primary thermostat/receiver. As a result, most of the setting methods will only retrieve the **first** thermostat identified in the system, in some cases, this might not even be the primary one you want to control if you have a multi-thermostat system. If you can help, feel free to branch and submit a pull request when you're happy to or you could send me the JSON response from a Get to /omnia/nodes (use `$h.GetClimate() | ConvertTo-Json`) and I'll see if I can determine the correct thermostat from the JSON output. <br/> *If you would REALLY like me to develop for multi-zone and you don't have the skills in PowerShell, you can share your login with me and I will develop using that access. I realise that's a big ask of anyone but I'm trustworthy and only interested in improving PoSHive for everyone, not messing up your heating/hot water system.*
 
@@ -36,7 +37,7 @@ Some examples of use (and the reasons why I did this)
 * Set your Philips Hue Light colour based on the current temperature inside or outside the home - why not use my PoSHue PowerShell class? ;)
 * Have as many "on and off times" as you like - using Windows Task Scheduler, you're not limited by anything so primitive as 6 schedules a day! ;)
 
- ![alt-text](http://www.lewisroberts.com/wp-content/uploads/2016/04/poshivebasics.gif "PoSHive basics")
+ ![alt-text](http://www.lewisroberts.com/wp-content/uploads/2016/04/poshivebasics130.gif "PoSHive basics")
 
 Obviously these are example uses, this class simply provides the ability to control your heating system by abstracting the British Gas Hive APIv6.1 in to PowerShell classes/methods.
 ## Using the class
@@ -207,6 +208,16 @@ $Hive.SaveHeatingScheduleToFile('D:\Temp\') # Returns nothing. A file containing
 Upload a heating schedule from a previously saved file. The method will parse the JSON structure to ensure it's valid and also check that there are 7 days worth of events in the schedule. It cannot however ensure that you are properly following all syntax. The best solution for creating your file is simply to set the schedule on the Hive website using the GUI and then use `$h.SaveHeatingScheduleToFile()` to save it. Repeat for all the profiles you want. If you want to edit the JSON, use any text editor but I recommend Notepad++ with the JSTool plugin.
 ```powershell
 $h.SetHeatingScheduleFromFile('D:\Temp\winter-schedule.json') # Returns "Schedule set successfully from D:\Temp\winter-schedule.json"
+```
+
+### Advance
+Just like the Hive site, this method advances the heating system to the next event in the schedule (for example if you want to turn the heating on (or off!) a little earlier than the schedule permits). The heating mode of the system MUST be schedule or the method returns an error.
+```powershell
+$h.SetHeatingAdvance()
+<#
+"Advancing to 17.0°C
+Desired temperature 17°C set successfully."
+#>
 ```
 
 ### Log out

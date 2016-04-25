@@ -25,7 +25,7 @@ Class Hive {
     [ValidateLength(4,100)][string] $Username
     [ValidateLength(4,100)][string] $Password
     [string] $ApiSessionId
-    hidden [string] $Agent = 'PoSHive 1.2.0 - github.com/lwsrbrts/PoSHive'
+    hidden [string] $Agent = 'PoSHive 1.3.0 - github.com/lwsrbrts/PoSHive'
     [psobject] $User
     [psobject] $Nodes
     hidden [hashtable] $Headers = @{
@@ -493,6 +493,7 @@ Class Hive {
         $this.Nodes = $this.GetClimate()
 
         # Get the node that holds the schedule data.
+        # This really will not work for hot water!
         $Receiver = $this.Nodes | Where-Object {$_.attributes.schedule}
 
         # Create the correct json structure.
@@ -522,6 +523,7 @@ Class Hive {
         $this.Nodes = $this.GetClimate()
 
         # Get the node that holds the schedule data.
+        # This really will not work for hot water!
         $Receiver = $this.Nodes | Where-Object {$_.attributes.schedule}
 
         $Settings = $null
@@ -546,6 +548,51 @@ Class Hive {
             }
         }
         Else {Return "The schedule in the file must contain entries for all seven days."}
+    }
+
+    [string] SetHeatingAdvance() {
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+
+        # Update nodes data
+        $this.Nodes = $this.GetClimate()
+
+        # Get the node that holds the schedule data.
+        # This really will not work for hot water!
+        $Receiver = $this.Nodes | Where-Object {$_.attributes.schedule}
+
+        # Check the heating is in SCHEDULE mode.
+        If (-not (($Receiver.attributes.activeHeatCoolMode.reportedValue -eq 'HEAT') -and ($Receiver.attributes.activeScheduleLock.reportedValue -eq $false))) {
+            $this.ReturnError("Heating mode is not currently SCHEDULE. Advancing is not possible.")
+        }
+
+        # Get the schedule data
+        $Schedule = $Receiver.attributes.schedule.reportedValue
+
+        # Get the current date and time.
+        $Date = Get-Date
+
+        # Set up variables.
+        $NextEvent = $null
+        
+        # Get today's schedule
+        $DaySchedule = Select-Object -InputObject $Schedule -ExpandProperty $Date.DayOfWeek.ToString()
+
+        # Get the next period/schedule from today's events
+        Foreach ($Period in $DaySchedule) {
+            If ((Get-Date $Period.time) -gt $Date) {
+                $NextEvent = $Period
+                Break
+            }
+        }
+
+        # If there is no event from today that's ahead of now, get tomorrow's first event.
+        If (-not $NextEvent) {
+            $DaySchedule = Select-Object -InputObject $Schedule -ExpandProperty $Date.AddDays(1).DayOfWeek.ToString()
+            $NextEvent = $DaySchedule[0]
+        }
+
+        # Set the temperature to the next event.
+        Return "Advancing to $($NextEvent.targetHeatTemperature)$([char]176)C...`r`n$($this.SetTemperature($NextEvent.targetHeatTemperature))"
     }
 
 # END HIVE CLASS
