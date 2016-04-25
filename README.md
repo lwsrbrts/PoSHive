@@ -3,6 +3,12 @@ A PowerShell 5 class to control your British Gas Hive (heating) system.
 
 > **This project is not sanctioned by or affiliated with British Gas in any way.**
 
+Install from the [PowerShell Gallery](https://www.powershellgallery.com/packages/PoSHive/)
+```powershell
+Install-Module -Name PoSHive
+```
+Or [download from the releases](https://github.com/lwsrbrts/PoSHive/releases) page.
+
 ##Release Notes
  * [**1.2.0 - Scheduler**](https://github.com/lwsrbrts/PoSHive/releases/tag/v1.2.0) - 23/04/2016 - Functions for saving/setting heating schedules to/from a JSON file.
  * **1.1.2 - Color[sic]** - 22/04/2016 - Removed the reliance on System.Drawing.Color assembly being loaded for use in this class. Moved it to PoSHue.
@@ -11,7 +17,6 @@ A PowerShell 5 class to control your British Gas Hive (heating) system.
  * **1.0.0 - Release** - 07/04/2016 - first release of the PoSHive class. Allows getting, setting temperature, setting heating mode to auto, manual or off. Turning on or cancelling of Boost mode.
 
 ## Purpose
-
 The purpose of this class is to enable you to use PowerShell (v5) scripting to exert more powerful logic control over the state of your heating(!) system.
 The class allows you to set most if not all of the same functionality as provided by the Hive website for your heating(!) system; including Heating Mode, Boost, Schedules and Holiday Schedule. Additionally, it allows you to more easily expose information about the system and its settings to enable you to perform powerful logic operations. If you find a bug or have a feature request, please open a new issue or let me know so I can resolve it.
 
