@@ -10,6 +10,7 @@ Install-Module -Name PoSHive
 Or [download from the releases](https://github.com/lwsrbrts/PoSHive/releases) page.
 
 ##Release Notes
+ * [**1.3.1 - Someday**](https://github.com/lwsrbrts/PoSHive/releases/tag/v1.3.1) - 27/04/2016 - Bugfix. Issue preventing GetHolidayMode() method from returning a result.
  * [**1.3.0 - Advance**](https://github.com/lwsrbrts/PoSHive/releases/tag/v1.3.0) - 25/04/2016 - Added method for advancing the heating system to the next event.
  * [**1.2.0 - Scheduler**](https://github.com/lwsrbrts/PoSHive/releases/tag/v1.2.0) - 23/04/2016 - Methods for saving/setting heating schedules to/from a JSON file.
  * **1.1.2 - Color[sic]** - 22/04/2016 - Removed the reliance on System.Drawing.Color assembly being loaded for use in this class. Moved it to PoSHue.
@@ -92,6 +93,7 @@ Login                      Method     void Login()
 Logout                     Method     psobject Logout()
 SaveHeatingScheduleToFile  Method     void SaveHeatingScheduleToFile(System.IO.DirectoryInfo DirectoryPath)
 SetBoostMode               Method     psobject SetBoostMode(BoostTime Duration)
+SetHeatingAdvance          Method     string SetHeatingAdvance()
 SetHeatingMode             Method     psobject SetHeatingMode(HeatingMode Mode)
 SetHeatingScheduleFromFile Method     string SetHeatingScheduleFromFile(System.IO.FileInfo FilePath)
 SetHolidayMode             Method     string SetHolidayMode(datetime StartDateTime, datetime EndDateTime, int Temperature)
