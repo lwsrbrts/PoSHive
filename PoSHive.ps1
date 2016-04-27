@@ -332,10 +332,10 @@ Class Hive {
         $this.Nodes = $this.GetClimate()
 
         # Find out the correct destination for holiday mode settings.
-        $Receiver = $this.Nodes | Where-Object {$_.attributes.holidayMode.targetValue} | Select -First 1
+        $Receiver = $this.Nodes | Where-Object {$_.attributes.holidayMode.reportedValue} | Select -First 1
         $Holiday = $Receiver.attributes.holidayMode
 
-        #Init variables...
+        # Init variables...
         $Start = $End = $Temp = $null
 
         If ($Holiday.reportedValue.enabled -eq $true) {
