@@ -7,7 +7,7 @@ Install from the [PowerShell Gallery](https://www.powershellgallery.com/packages
 ```powershell
 Install-Module -Name PoSHive
 ```
-Or deploy to Azure Automation - yes, the class/module will work within a runbook.<br/>
+Or deploy to Azure Automation - yes, the class/module [will work within a runbook](https://github.com/lwsrbrts/PoSHive/wiki/AzureAutomationRunbook).<br/>
 ![alt-text](http://www.lewisroberts.com/wp-content/uploads/2016/04/poshive-runbook.png "PoSHive Runbook")
 
 Or [download from the releases](https://github.com/lwsrbrts/PoSHive/releases) page.
