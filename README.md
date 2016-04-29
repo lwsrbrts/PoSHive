@@ -7,7 +7,11 @@ Install from the [PowerShell Gallery](https://www.powershellgallery.com/packages
 ```powershell
 Install-Module -Name PoSHive
 ```
+Or deploy to Azure Automation - yes, the class/module will work within a runbook.<br/>
+![alt-text](http://www.lewisroberts.com/wp-content/uploads/2016/04/poshive-runbook.png "PoSHive Runbook")
+
 Or [download from the releases](https://github.com/lwsrbrts/PoSHive/releases) page.
+
 
 ##Release Notes
  * [**1.3.1 - Someday**](https://github.com/lwsrbrts/PoSHive/releases/tag/v1.3.1) - 27/04/2016 - Bugfix. Issue preventing GetHolidayMode() method from returning a result.
@@ -24,7 +28,7 @@ The class allows you to set most if not all of the same functionality as provide
 
 ## What can't it do?
 ### Hot Water
-The class **does not currently support Hot Water systems** - I have a combi-boiler with on-demand hot water so I don't have a Hive hot water system and so can't develop for it unfortunately. In some cases, the code I use to determine the "device" to send commands to may conflict with the hot water system and or completely fail or cause unknows side effects. This is a side-effect of not having access to a hive system with hot water as I cannot see the device configuration to filter out the hot water system. I can detect if it's a hot water supporting system or not and completely prevent interaction but who knows, it "may" work as-is, I just don't know. If you can help, feel free to branch/fork and submit a pull request when you're happy to.<br/> *If you would REALLY like me to develop for these features and you don't have the skills in PowerShell, you can share your login with me and I will develop using that access. I realise that's a big ask of anyone but I'm trustworthy and only interested in improving PoSHive for everyone, not messing up your heating/hot water system.*
+The class **does not currently support Hot Water systems** - I have a combi-boiler with on-demand hot water so I don't have a Hive hot water system and so can't develop for it unfortunately. In some cases, the code I use to determine the "device" to send commands to may conflict with the hot water system and or completely fail or cause unknown side effects. This is due simply to not having access to a hive system with hot water as I cannot see the device configuration to filter out the hot water system. I can detect if it's a hot water supporting system or not and completely prevent interaction but who knows, it "may" work as-is, I just don't know. If you can help, feel free to branch/fork and submit a pull request when you're happy to.<br/> *If you would REALLY like me to develop for these features and you don't have the skills in PowerShell, you can share your login with me and I will develop using that access. I realise that's a big ask of anyone but I'm trustworthy and only interested in improving PoSHive for everyone, not messing up your heating/hot water system.*
 ### Multi-zone Systems
 The class **does not currently support multi-zone/thermostat Hive installations** - I'm not currently blessed with a large enough house to require a multi-zone Hive system so unfortunately, I'm not able to develop for this. Honestly, this is the biggest concern for me in terms of PoSHive being widely adopted as I have to make certain assumptions in the code about the primary thermostat/receiver. As a result, most of the setting methods will only retrieve the **first** thermostat identified in the system, in some cases, this might not even be the primary one you want to control if you have a multi-thermostat system. If you can help, feel free to branch and submit a pull request when you're happy to or you could send me the JSON response from a Get to /omnia/nodes (use `$h.GetClimate() | ConvertTo-Json`) and I'll see if I can determine the correct thermostat from the JSON output. <br/> *If you would REALLY like me to develop for multi-zone and you don't have the skills in PowerShell, you can share your login with me and I will develop using that access. I realise that's a big ask of anyone but I'm trustworthy and only interested in improving PoSHive for everyone, not messing up your heating/hot water system.*
 
