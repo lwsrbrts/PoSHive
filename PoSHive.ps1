@@ -17,20 +17,22 @@ Enum BoostTime {
 }
 
 Class Hive {
+
     ##############
     # PROPERTIES #
     ##############
 
-    [uri]$ApiUrl = "https://api-prod.bgchprod.info/omnia/" # APIv6.1
+    [uri]$ApiUrl = "https://beekeeper.hivehome.com/1.0/global/login" # This is the global login URL - changes after login.
     [ValidateLength(4,100)][string] $Username
     [ValidateLength(4,100)][string] $Password
     [string] $ApiSessionId
-    hidden [string] $Agent = 'PoSHive 1.3.0 - github.com/lwsrbrts/PoSHive'
+    hidden [string] $Agent = 'PoSHive 1.4.0 - github.com/lwsrbrts/PoSHive'
     [psobject] $User
-    [psobject] $Nodes
+    [psobject] $Devices
+    [psobject] $Products
     hidden [hashtable] $Headers = @{
-        'Accept' = 'application/vnd.alertme.zoo-6.1+json'
-        'X-AlertMe-Client' = $this.Agent
+        'Accept' = '*/*'
+        'User-Agent' = $this.Agent
         'Content-Type' = 'application/json'
     }
     
@@ -67,21 +69,23 @@ Class Hive {
 
     # Login - could do this in the constructor but makes sense to have it as a separate method. May only want weather!
     [void] Login () {
+        If ($this.ApiSessionId) {$this.ReturnError("You are already logged in.")}
+
         $Settings = [psobject]@{
-            sessions = @(
-                @{
-                    username = $this.Username
-                    password = $this.Password
-                }
-             )
+            username = $this.Username
+            password = $this.Password
+            devices = $true
+            products = $true
         }
 
         Try {
-            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/auth/sessions" -Body (ConvertTo-Json $Settings) -Headers $this.Headers -ErrorAction Stop
-            $this.ApiSessionId = $Response.sessions.id
-            $this.Headers.Add('X-Omnia-Access-Token', $this.ApiSessionId)
-            $this.Nodes = $this.GetClimate()
-            $this.User = $this.GetUser()
+            $Response = Invoke-RestMethod -Method Post -Uri "https://beekeeper.hivehome.com/1.0/global/login" -Body (ConvertTo-Json $Settings) -Headers $this.Headers -ErrorAction Stop
+            $this.ApiSessionId = $Response.token
+            $this.Headers.Add('Authorization', $this.ApiSessionId)
+            $this.ApiUrl = $Response.platform.endpoint
+            $this.Devices = $Response.devices
+            $this.Products = $Response.products
+            $this.User = $Response.user
         }
         Catch {
             $this.ReturnError($_)
@@ -92,10 +96,10 @@ Class Hive {
     [psobject] Logout() {
         If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
         Try {
-            $Response = Invoke-RestMethod -Method Delete -Uri "$($this.ApiUrl)/auth/sessions/$($this.ApiSessionId)" -Headers $this.Headers
+            $Response = Invoke-RestMethod -Method Delete -Uri "$($this.ApiUrl)/auth/logout" -Headers $this.Headers
             # Needs some error checking.
             $this.ApiSessionId = $null
-            $this.Headers.Remove('X-Omnia-Access-Token')
+            $this.Headers.Remove('Authorization')
             Return "Logged out successfully."
         }
         Catch {
@@ -105,37 +109,56 @@ Class Hive {
     }
 
     <#
-        Get nodes (devices) data.
+        Get products data.
         Still exposed as a usable method in the class but acts primarily
-        as a helper method to keep the $this.Nodes variable fresh. Is usually called
+        as a helper method to keep the $this.Products variable fresh. Is usually called
         before any setting method that includes logic or is dependent on the state
         of an attribute.
     #>
-    [psobject] GetClimate() {
+    [psobject] GetProducts() {
         If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
         Try {
-            $Response = Invoke-RestMethod -Method Get -Uri "$($this.ApiUrl)/nodes" -Headers $this.Headers -ErrorAction Stop
-            Return $Response.nodes
+            $Response = Invoke-RestMethod -Method Get -Uri "$($this.ApiUrl)/products?after=" -Headers $this.Headers -ErrorAction Stop
+            Return $Response
         }
         Catch {
             $this.ReturnError($_)
             Return $null
         }
     }
+
+    <#
+        Get devices data.
+        Still exposed as a usable method in the class but acts primarily
+        as a helper method to keep the $this.Devices variable fresh. Is usually called
+        before any setting method that includes logic or is dependent on the state
+        of an attribute.
     #>
+    [psobject] GetDevices() {
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        Try {
+            $Response = Invoke-RestMethod -Method Get -Uri "$($this.ApiUrl)/devices" -Headers $this.Headers -ErrorAction Stop
+            Return $Response
+        }
+        Catch {
+            $this.ReturnError($_)
+            Return $null
+        }
+    }
 
     <#
         Does what it says on the tin. Returns the currently reported temperature
         value from the thermostat. Not likely to work as expected in multi-zone/thermostat
         Hive systems. Sorry.
-        Provide $true to get a formatted value: eg. 21.1°C
+        Provide $true to get a formatted value: eg. 21.1ï¿½C
         Provide $false to get a simple decimal: eg. 21.1
     #>
     [psobject] GetTemperature([bool] $FormattedValue) {
         If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
         Try {
-            $this.Nodes = $this.GetClimate()
-            $Temperature = [Math]::Round($this.Nodes.attributes.temperature.reportedValue, 1)
+            $this.Products = $this.GetProducts()
+            $this.Devices = $this.GetDevices()
+            $Temperature = [Math]::Round($this.Products.props.temperature, 1)
             If ($FormattedValue) {Return "$($Temperature.ToString())$([char] 176 )C"}
             Else {Return $Temperature}
         }
@@ -243,7 +266,7 @@ Class Hive {
     <#
         Boosts the heating system for the defined time.
         The [BoostTime] Enum is used to ensure proper time values are submitted.
-        Always boosts to 22°C - this is the same as the Hive site.
+        Always boosts to 22ï¿½C - this is the same as the Hive site.
         You can re-boost at any time but the timer starts again, obviously.
     #>
     [psobject] SetBoostMode([BoostTime] $Duration) {
@@ -452,9 +475,10 @@ Class Hive {
     [psobject] GetWeather() {
         If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
         $Postcode = $this.User.postcode
+        $Country = $this.User.countryCode
         
         Try {
-            $Response = Invoke-RestMethod -Method Get -Uri "https://weather-prod.bgchprod.info/weather?postcode=$Postcode"
+            $Response = Invoke-RestMethod -Method Get -Uri "https://weather-prod.bgchprod.info/weather?postcode=$Postcode&country=$Country"
             Return $Response.weather | Select description, temperature
         }
         Catch {
@@ -465,11 +489,12 @@ Class Hive {
 
     # Get the current weather (temp, conditions) for a specific postcode location.
     # Make sure the postcode is accurate or you'll likely get an error. I don't validate it!
-    [psobject] GetWeather([string] $Postcode) {
+    [psobject] GetWeather([string] $Postcode, [string] $CountryCode) {
         $Postcode = $Postcode.Replace(' ', '').ToUpper()
+        $CountryCode = $CountryCode.Replace(' ', '').ToUpper()
         
         Try {
-            $Response = Invoke-RestMethod -Method Get -Uri "https://weather-prod.bgchprod.info/weather?postcode=$Postcode"
+            $Response = Invoke-RestMethod -Method Get -Uri "https://weather-prod.bgchprod.info/weather?postcode=$Postcode&country=$CountryCode"
             Return $Response.weather | Select description, temperature
         }
         Catch {
@@ -478,7 +503,7 @@ Class Hive {
         }
     }
 
-    # Get the outside weather temperature for the users' postcode location in °C
+    # Get the outside weather temperature for the users' postcode location in ï¿½C
     [int] GetWeatherTemperature() {
         Return $this.GetWeather().temperature.value
     }
