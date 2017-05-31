@@ -5,6 +5,12 @@ Enum HeatingMode {
     OFF
 }
 
+Enum ActivePlugMode {
+    <# Defines the modes that can be set on an active plug. #>
+    SCHEDULE
+    MANUAL
+}
+
 Enum BoostTime {
     <# Defines accepted boost durations in hours. #>
     HALF
@@ -79,7 +85,7 @@ Class Hive {
         }
 
         Try {
-            $Response = Invoke-RestMethod -Method Post -Uri "https://beekeeper.hivehome.com/1.0/global/login" -Body (ConvertTo-Json $Settings) -Headers $this.Headers -ErrorAction Stop
+            $Response = Invoke-RestMethod -Method Post -Uri $this.ApiUrl -Body (ConvertTo-Json $Settings) -Headers $this.Headers -ErrorAction Stop
             $this.ApiSessionId = $Response.token
             $this.Headers.Add('Authorization', $this.ApiSessionId)
             $this.ApiUrl = $Response.platform.endpoint
@@ -158,7 +164,13 @@ Class Hive {
         Try {
             $this.Products = $this.GetProducts()
             $this.Devices = $this.GetDevices()
-            $Temperature = [Math]::Round($this.Products.props.temperature, 1)
+
+            If (($this.Products | Where-Object {$_.type -eq "heating"}).Count -is [int]) { $this.ReturnError('There is more than one product of type "heating". Apologies but this module does not currently support multiple heat zones.') }
+
+            $HeatingNode = $this.Products | Where-Object {$_.type -eq "heating"}
+
+            $Temperature = [Math]::Round([int]$HeatingNode.props.temperature, 1)
+
             If ($FormattedValue) {Return "$($Temperature.ToString())$([char] 176 )C"}
             Else {Return $Temperature}
         }
@@ -180,32 +192,21 @@ Class Hive {
         If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
 
         # Update nodes
-        $this.Nodes = $this.GetClimate()
+        $this.Products = $this.GetProducts()
+        $this.Devices = $this.GetDevices()
+
+        If (($this.Products | Where-Object {$_.type -eq "heating"}).Count -is [int]) { $this.ReturnError('There is more than one product of type "heating". Apologies but this module does not currently support multiple heat zones.') }
         
         # Find out the correct node to send the temp to. Only the first Thermostat we find!
-        $Thermostat = $this.Nodes | Where-Object {$_.attributes.targetHeatTemperature} | Select -First 1
+        $Thermostat = $this.Products | Where-Object {$_.type -eq "heating"} | Select -First 1
 
-        $ApiMode = $null
-        $ApiScheduleLock = $null
-        Switch ($Mode)
-        {
-            'MANUAL' {$ApiMode = 'HEAT'; $ApiScheduleLock = $true}
-            'SCHEDULE' {$ApiMode = 'HEAT'; $ApiScheduleLock = $false}
-            'OFF' {$ApiMode = 'OFF'; $ApiScheduleLock = $true}
-        }
         $Settings = [psobject]@{
-            nodes = @(
-                @{
-                    attributes = @{
-                        activeHeatCoolMode = @{targetValue = $ApiMode}
-                        activeScheduleLock = @{targetValue = $ApiScheduleLock}
-                    }
-                }
-            )
+            mode = $Mode.ToString()
         }
+        If ($Mode -eq 'MANUAL') { $Settings.Add('target',20) }
 
         Try {
-            $Response = Invoke-RestMethod -Method Put -Uri "$($this.ApiUrl)/nodes/$($Thermostat.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/heating/$($Thermostat.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
             Return "Heating mode set to $($Mode.ToString()) successfully."
         }
         Catch {
@@ -230,31 +231,26 @@ Class Hive {
         $Temp = ([Math]::Round(($targetTemperature * 2), [System.MidpointRounding]::AwayFromZero)/2)
 
         # Update nodes
-        $this.Nodes = $this.GetClimate()
+        $this.Products = $this.GetProducts()
+        $this.Devices = $this.GetDevices()
 
+        If (($this.Products | Where-Object {$_.type -eq "heating"}).Count -is [int]) { $this.ReturnError('There is more than one product of type "heating". Apologies but this module does not currently support multiple heat zones.') }
+        
         # Find out the correct node to send the temp to. Only the first Thermostat we find!
-        $Thermostat = $this.Nodes | Where-Object {$_.attributes.targetHeatTemperature} | Select -First 1
-
-        # Check the submitted temp doesn't exceed the permitted values
-        If (($Temp -gt $Thermostat.attributes.maxHeatTemperature.reportedValue) -or ($Temp -lt $Thermostat.attributes.minHeatTemperature.reportedValue)) {
-            $this.ReturnError("Submitted temperature value ($Temp) exceeds the permitted range ($($Thermostat.attributes.minHeatTemperature.reportedValue) -> $($Thermostat.attributes.maxHeatTemperature.reportedValue))")
-        }
+        $Thermostat = $this.Products | Where-Object {$_.type -eq "heating"} | Select -First 1
 
         # Check the heating is not in OFF state
-        If ($Thermostat.attributes.activeHeatCoolMode.reportedValue -eq 'OFF') {
+        If ($Thermostat.state.mode -eq 'OFF') {
             $this.ReturnError("Heating mode is currently OFF. Set to MANUAL or SCHEDULE first.")
         }
 
         # This will be converted to JSON. I suppose it could just be JSON but...meh.
         $Settings = [psobject]@{
-            nodes = @(
-                @{
-                    attributes = @{targetHeatTemperature = @{targetValue = $Temp}}
-                }
-             )
+            target = $Temp
         }
+
         Try {
-            $Response = Invoke-RestMethod -Method Put -Uri "$($this.ApiUrl)/nodes/$($Thermostat.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/heating/$($Thermostat.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
             Return "Desired temperature ($($targetTemperature.ToString())$([char] 176 )C) set successfully."
         }
         Catch {
@@ -266,17 +262,20 @@ Class Hive {
     <#
         Boosts the heating system for the defined time.
         The [BoostTime] Enum is used to ensure proper time values are submitted.
-        Always boosts to 22�C - this is the same as the Hive site.
+        Always boosts to 22C - this is the same as the Hive site.
         You can re-boost at any time but the timer starts again, obviously.
     #>
     [psobject] SetBoostMode([BoostTime] $Duration) {
         If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
         
         # Update nodes
-        $this.Nodes = $this.GetClimate()
+        $this.Products = $this.GetProducts()
+        $this.Devices = $this.GetDevices()
 
+        If (($this.Products | Where-Object {$_.type -eq "heating"}).Count -is [int]) { $this.ReturnError('There is more than one product of type "heating". Apologies but this module does not currently support multiple heat zones.') }
+        
         # Find out the correct node to send the temp to. Only the first Thermostat we find!
-        $Thermostat = $this.Nodes | Where-Object {$_.attributes.targetHeatTemperature} | Select -First 1
+        $Thermostat = $this.Products | Where-Object {$_.type -eq "heating"} | Select -First 1
 
         $ApiDuration = $null # Creating so it's there!
         $ApiTemperature = 22 # This is the same Boost default temp as the Hive site.
@@ -293,19 +292,13 @@ Class Hive {
 
         # JSON structure in a PSObject
         $Settings = [psobject]@{
-            nodes = @(
-                @{
-                    attributes = @{
-                        activeHeatCoolMode = @{targetValue = 'BOOST'}
-                        scheduleLockDuration = @{targetValue = $ApiDuration}
-                        targetHeatTemperature = @{targetValue = $ApiTemperature}
-                    }
-                }
-             )
+            mode = 'BOOST'
+            boost = $ApiDuration
+            target = $ApiTemperature
         }
 
         Try {
-            $Response = Invoke-RestMethod -Method Put -Uri "$($this.ApiUrl)/nodes/$($Thermostat.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/heating/$($Thermostat.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
             Return "BOOST mode activated for $ApiDuration minutes at $($ApiTemperature.ToString())$([char] 176 )C"
         }
         Catch {
@@ -323,22 +316,25 @@ Class Hive {
     [string] CancelBoostMode() {
         If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
         
-        # Update nodes data
-        $this.Nodes = $this.GetClimate()
+        # Update nodes
+        $this.Products = $this.GetProducts()
+        $this.Devices = $this.GetDevices()
 
-        # Find out the correct node for the Thermostat.
-        $Thermostat = $this.Nodes | Where-Object {$_.attributes.targetHeatTemperature} | Select -First 1
+        If (($this.Products | Where-Object {$_.type -eq "heating"}).Count -is [int]) { $this.ReturnError('There is more than one product of type "heating". Apologies but this module does not currently support multiple heat zones.') }
+        
+        # Find out the correct node to send the temp to. Only the first Thermostat we find!
+        $Thermostat = $this.Products | Where-Object {$_.type -eq "heating"} | Select -First 1
 
         # If the system isn't set to BOOST, return without doing anything.
-        If ($Thermostat.attributes.activeHeatCoolMode.reportedValue -ne 'BOOST') {
+        If ($Thermostat.state.mode -ne 'BOOST') {
             $this.ReturnError("The current heating mode is not BOOST.")
         }
         
-        Switch ($Thermostat.attributes.previousConfiguration.reportedValue.mode) {
-            AUTO { $this.SetHeatingMode('SCHEDULE') }
+        Switch ($Thermostat.props.previous.mode) {
+            SCHEDULE { $this.SetHeatingMode('SCHEDULE') }
             MANUAL {
-                $this.SetHeatingMode('MANUAL')
-                $this.SetTemperature($Thermostat.attributes.previousConfiguration.reportedValue.targetHeatTemperature)
+                $this.SetHeatingMode('MANUAL') 
+                $this.SetTemperature($Thermostat.props.previous.target)
             }
             OFF { $this.SetHeatingMode('OFF') }
             Default {$this.SetHeatingMode('SCHEDULE')}
@@ -619,6 +615,86 @@ Class Hive {
         # Set the temperature to the next event.
         Return "Advancing to $($NextEvent.targetHeatTemperature)$([char]176)C...`r`n$($this.SetTemperature($NextEvent.targetHeatTemperature))"
     }
+
+    hidden [psobject] GetActivePlug([string]$Name) {
+        $ActivePlug = $this.Products | Where-Object {($_.type -eq "activeplug") -and ($_.state.name -eq $Name)}
+        If ($ActivePlug) { Return $ActivePlug }
+        Else { Return $false }
+    }
+
+    [string] SetActivePlugMode([ActivePlugMode]$Mode, [string]$Name) {
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+
+        # Update nodes
+        $this.Products = $this.GetProducts()
+        $this.Devices = $this.GetDevices()
+
+        # Check that the plug name exists and assign to a var if so.
+        If (-not ($ActivePlug = $this.GetActivePlug($Name))) {
+            $this.ReturnError("The active plug name provided `"$Name`" does not exist.")
+        }
+        
+        $Settings = $null
+
+        Switch ($ActivePlug.state.mode) {
+           {($_ -eq "MANUAL") -and ($Mode -eq 'MANUAL') } { Return "`"$Name`" is already in MANUAL." }
+           {($_ -eq "SCHEDULE") -and ($Mode -eq 'SCHEDULE') } { Return "`"$Name`" is already in SCHEDULE." }
+        }
+
+        Switch ($Mode) {
+            'MANUAL' { $Settings = [psobject]@{mode = "MANUAL"} }
+            'SCHEDULE' { $Settings = [psobject]@{mode = "SCHEDULE"} }
+        }
+
+        Try {
+            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/activeplug/$($ActivePlug.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+        }
+        Catch {
+            $this.ReturnError($_)
+            Return $null
+        }
+        
+        Return "Active Plug `"$Name`" set to $($Settings.mode) successfully."
+    }
+
+    <#
+        Turn a named active plug on or off.
+    #>
+    [string] SetActivePlugState([bool]$State, [string]$Name) {
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+
+        # Update nodes
+        $this.Products = $this.GetProducts()
+        $this.Devices = $this.GetDevices()
+
+        # Check that the plug name exists and assign to a var if so.
+        If (-not ($ActivePlug = $this.GetActivePlug($Name))) {
+            $this.ReturnError("The active plug name provided `"$Name`" does not exist.")
+        }
+        
+        $Settings = $null
+
+        Switch ($ActivePlug.state.status) {
+           {($_ -eq "ON") -and ($State -eq $true) } { Return "`"$Name`" is already ON." }
+           {($_ -eq "OFF") -and ($State -eq $false) } { Return "`"$Name`" is already OFF." }
+        }
+
+        Switch ($State) {
+            $true { $Settings = [psobject]@{status = "ON"} }
+            $false { $Settings = [psobject]@{status = "OFF"} }
+        }
+
+        Try {
+            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/activeplug/$($ActivePlug.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+        }
+        Catch {
+            $this.ReturnError($_)
+            Return $null
+        }
+        
+        Return "Active Plug `"$Name`" set to $($Settings.status) successfully."
+    }
+
 
 # END HIVE CLASS
 }
