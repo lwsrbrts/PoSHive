@@ -60,13 +60,20 @@ Class Hive {
         Return [System.DateTimeOffset]::FromUnixTimeMilliseconds($Milliseconds).LocalDateTime
     }
 
-    # Return errors and terminate execution 
+    # Convert date time to unix time in milliseconds.
+    hidden [long] DateTimeToUnixTimestamp ([datetime] $dateTime) {
+        Return ($dateTime.ToUniversalTime() - [datetime]::new(1970, 1, 1, 0, 0, 0, 0, [DateTimeKind]::Utc)).TotalMilliseconds
+    }
+
+    # Return errors and terminate execution
+    <#
     hidden [void] ReturnError([System.Management.Automation.ErrorRecord] $e) {
         $sr = [System.IO.StreamReader]::new($e.Exception.Response.GetResponseStream())
         $sr.BaseStream.Position = 0
         $r = ConvertFrom-Json ($sr.ReadToEnd())
         Write-Error "An error occurred in the execution of the request:`r`nError Code:`t$($r.errors.code)`r`nError Title:`t$($r.errors.title)" -ErrorAction Stop
     }
+    #>
 
     # Return errors and terminate execution 
     hidden [void] ReturnError([string] $e) {
@@ -346,23 +353,23 @@ Class Hive {
     # Get information about current holiday mode
     [string] GetHolidayMode() {
         If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
-        
-        # Update nodes data
-        $this.Nodes = $this.GetClimate()
-
-        # Find out the correct destination for holiday mode settings.
-        $Receiver = $this.Nodes | Where-Object {$_.attributes.holidayMode.reportedValue} | Select -First 1
-        $Holiday = $Receiver.attributes.holidayMode
+        Try {
+            $Holiday = Invoke-RestMethod -Method Get -Uri "$($this.ApiUrl)/holiday-mode" -Headers $this.Headers -ErrorAction Stop
+        }
+        Catch {
+            $this.ReturnError($_)
+            Return $null
+        }
 
         # Init variables...
         $Start = $End = $Temp = $null
 
-        If ($Holiday.reportedValue.enabled -eq $true) {
-            $Start = [DateTime]::SpecifyKind($Holiday.reportedValue.startDateTime, [DateTimeKind]::Utc)
-            $End = [DateTime]::SpecifyKind($Holiday.reportedValue.endDateTime, [DateTimeKind]::Utc)
-            $Temp = [int] $Holiday.targetValue.targetHeatTemperature
+        If ($Holiday.enabled -eq $true) {
+            $Start = [DateTime]::SpecifyKind($this.ConvertUnixTime($Holiday.start), [DateTimeKind]::Local)
+            $End = [DateTime]::SpecifyKind($this.ConvertUnixTime($Holiday.end), [DateTimeKind]::Local)
+            $Temp = [int] $Holiday.temperature
         }
-        ElseIf ($Holiday.reportedValue.enabled -eq $false) {
+        ElseIf ($Holiday.enabled -eq $false) {
             Return "Holiday mode is not currently enabled."
         }
         Else {
@@ -393,34 +400,21 @@ Class Hive {
         }
 
         # Update nodes data
-        $this.Nodes = $this.GetClimate()
-
-        # Find out the correct destination for holiday mode settings.
-        $Receiver = $this.Nodes | Where-Object {$_.attributes.holidayMode.targetValue} | Select -First 1
+        $this.Products = $this.GetProducts()
+        $this.Devices = $this.GetDevices()
 
         # The user will only ever define a local time but force it anyway.
         $StartDateUTC = [DateTime]::SpecifyKind($StartDateTime, [DateTimeKind]::Local)
         $EndDateUTC = [DateTime]::SpecifyKind($EndDateTime, [DateTimeKind]::Local)
 
         $Settings = [psobject]@{
-            nodes = @(
-                @{
-                    attributes = @{
-                        holidayMode = @{
-                            targetValue = @{ 
-                                enabled = $true
-                                targetHeatTemperature = $Temperature
-                                startDateTime = (Get-Date $StartDateUTC -Format "yyyy-MM-ddTHH:mm:ssK")
-                                endDateTime = (Get-Date $EndDateUTC -Format "yyyy-MM-ddTHH:mm:ssK")
-                            }
-                        }
-                    }
-                }
-            )
+            temperature = $Temperature
+            start = $this.DateTimeToUnixTimestamp($StartDateUTC)
+            end = $this.DateTimeToUnixTimestamp($EndDateUTC)
         }
 
         Try {
-            $Response = Invoke-RestMethod -Method Put -Uri "$($this.ApiUrl)/nodes/$($Receiver.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/holiday-mode" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
             Return "Holiday mode activated from $($StartDateTime.ToString()) -> $($EndDateTime.ToString()) @ $Temperature$([char]176)C."
         }
         Catch {
@@ -433,33 +427,9 @@ Class Hive {
     [string] CancelHolidayMode() {
         If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
         
-        # Update nodes data
-        $this.Nodes = $this.GetClimate()
-
-        # Find out the correct destination for holiday mode settings.
-        $Receiver = $this.Nodes | Where-Object {$_.attributes.holidayMode.targetValue} | Select -First 1
-
-        $Settings = [psobject]@{
-            nodes = @( @{ attributes = @{ holidayMode = @{ targetValue = @{ enabled = $false } } } } )
-        }
-
         Try {
-            $Response = Invoke-RestMethod -Method Put -Uri "$($this.ApiUrl)/nodes/$($Receiver.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+            $Response = Invoke-RestMethod -Method Delete -Uri "$($this.ApiUrl)/holiday-mode" -Headers $this.Headers
             Return "Holiday mode cancelled."
-        }
-        Catch {
-            $this.ReturnError($_)
-            Return $null
-        }
-    }
-
-    # Get user information for the logged in user. Data requested once at login time.
-    [psobject] GetUser() {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
-
-        Try {
-            $Response = Invoke-RestMethod -Method Get -Uri "$($this.ApiUrl)/users/" -Headers $this.Headers
-            Return $Response.users[0]
         }
         Catch {
             $this.ReturnError($_)
@@ -499,7 +469,7 @@ Class Hive {
         }
     }
 
-    # Get the outside weather temperature for the users' postcode location in �C
+    # Get the outside weather temperature for the users' postcode location in C
     [int] GetWeatherTemperature() {
         Return $this.GetWeather().temperature.value
     }
@@ -511,15 +481,17 @@ Class Hive {
         If (-not $DirectoryPath.Exists) {$this.ReturnError("The path should already exist.")}
 
         # Update nodes data
-        $this.Nodes = $this.GetClimate()
+        $this.Products = $this.GetProducts()
+        $this.Devices = $this.GetDevices()
 
-        # Get the node that holds the schedule data.
-        # This really will not work for hot water!
-        $Receiver = $this.Nodes | Where-Object {$_.attributes.schedule}
+        If (($this.Products | Where-Object {$_.type -eq "heating"}).Count -is [int]) { $this.ReturnError('There is more than one product of type "heating". Apologies but this module does not currently support multiple heat zones.') }
+        
+        # Find out the correct node to send the temp to. Only the first Thermostat we find!
+        $Thermostat = $this.Products | Where-Object {$_.type -eq "heating"} | Select -First 1
 
         # Create the correct json structure.
         $Settings = [psobject]@{
-            nodes = @( @{ attributes = @{ schedule = @{ targetValue = $Receiver.attributes.schedule.reportedValue } } } )
+            schedule = $Thermostat.state.schedule
         }
 
         # Create the file output path and name.
@@ -541,11 +513,13 @@ Class Hive {
         If (-not (Test-Path -Path $FilePath )) {$this.ReturnError("The file path supplied does not exist.")}
 
         # Update nodes data
-        $this.Nodes = $this.GetClimate()
+        $this.Products = $this.GetProducts()
+        $this.Devices = $this.GetDevices()
 
-        # Get the node that holds the schedule data.
-        # This really will not work for hot water!
-        $Receiver = $this.Nodes | Where-Object {$_.attributes.schedule}
+        If (($this.Products | Where-Object {$_.type -eq "heating"}).Count -is [int]) { $this.ReturnError('There is more than one product of type "heating". Apologies but this module does not currently support multiple heat zones.') }
+        
+        # Find out the correct node to send the temp to. Only the first Thermostat we find!
+        $Thermostat = $this.Products | Where-Object {$_.type -eq "heating"} | Select -First 1
 
         $Settings = $null
         
@@ -558,9 +532,9 @@ Class Hive {
         }
 
         # Seven days of events in the file?
-        If (((($Settings.nodes.attributes.schedule.targetValue).psobject.Members | Where {$_.MemberType -eq 'NoteProperty'}).count) -eq 7) {
+        If (((($Settings.schedule).psobject.Members | Where {$_.MemberType -eq 'NoteProperty'}).count) -eq 7) {
             Try {
-                $Response = Invoke-RestMethod -Method Put -Uri "$($this.ApiUrl)/nodes/$($Receiver.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+                $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/heating/$($Thermostat.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
                 Return "Schedule set successfully from $FilePath"
             }
             Catch {
@@ -575,22 +549,25 @@ Class Hive {
         If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
 
         # Update nodes data
-        $this.Nodes = $this.GetClimate()
+        $this.Products = $this.GetProducts()
+        $this.Devices = $this.GetDevices()
 
-        # Get the node that holds the schedule data.
-        # This really will not work for hot water!
-        $Receiver = $this.Nodes | Where-Object {$_.attributes.schedule}
+        If (($this.Products | Where-Object {$_.type -eq "heating"}).Count -is [int]) { $this.ReturnError('There is more than one product of type "heating". Apologies but this module does not currently support multiple heat zones.') }
+        
+        # Find out the correct node to send the temp to. Only the first Thermostat we find!
+        $Thermostat = $this.Products | Where-Object {$_.type -eq "heating"} | Select -First 1
 
         # Check the heating is in SCHEDULE mode.
-        If (-not (($Receiver.attributes.activeHeatCoolMode.reportedValue -eq 'HEAT') -and ($Receiver.attributes.activeScheduleLock.reportedValue -eq $false))) {
+        If (-not ($Thermostat.state.mode -eq 'SCHEDULE')) {
             $this.ReturnError("Heating mode is not currently SCHEDULE. Advancing is not possible.")
         }
 
         # Get the schedule data
-        $Schedule = $Receiver.attributes.schedule.reportedValue
+        $Schedule = $Thermostat.state.schedule
 
         # Get the current date and time.
         $Date = Get-Date
+        $MinutesPastMidnight = ($Date - $Date.Date).TotalMinutes
 
         # Set up variables.
         $NextEvent = $null
@@ -600,7 +577,7 @@ Class Hive {
 
         # Get the next period/schedule from today's events
         Foreach ($Period in $DaySchedule) {
-            If ((Get-Date $Period.time) -gt $Date) {
+            If (($Period.start) -gt $MinutesPastMidnight) {
                 $NextEvent = $Period
                 Break
             }
@@ -613,7 +590,7 @@ Class Hive {
         }
 
         # Set the temperature to the next event.
-        Return "Advancing to $($NextEvent.targetHeatTemperature)$([char]176)C...`r`n$($this.SetTemperature($NextEvent.targetHeatTemperature))"
+        Return "Advancing to $($NextEvent.value.target)$([char]176)C...`r`n$($this.SetTemperature($NextEvent.value.target))"
     }
 
     hidden [psobject] GetActivePlug([string]$Name) {
