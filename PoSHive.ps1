@@ -163,7 +163,7 @@ Class Hive {
         Does what it says on the tin. Returns the currently reported temperature
         value from the thermostat. Not likely to work as expected in multi-zone/thermostat
         Hive systems. Sorry.
-        Provide $true to get a formatted value: eg. 21.1ï¿½C
+        Provide $true to get a formatted value: eg. 21.1C
         Provide $false to get a simple decimal: eg. 21.1
     #>
     [psobject] GetTemperature([bool] $FormattedValue) {
@@ -176,7 +176,7 @@ Class Hive {
 
             $HeatingNode = $this.Products | Where-Object {$_.type -eq "heating"}
 
-            $Temperature = [Math]::Round([int]$HeatingNode.props.temperature, 1)
+            $Temperature = [Math]::Round([double]$HeatingNode.props.temperature, 1)
 
             If ($FormattedValue) {Return "$($Temperature.ToString())$([char] 176 )C"}
             Else {Return $Temperature}
@@ -189,10 +189,10 @@ Class Hive {
 
     <#
         Sets the heating mode to one of the [HeatingMode] enum values. ie.
-        SCHEDULE, MANUAL, OFF. $this.Nodes is always refreshed prior to execution.
+        SCHEDULE, MANUAL, OFF. $this.Products and $this Devices is always refreshed prior to execution.
         This method does not identify the Thermostat on which to set the mode,
         it only sets it on the first returned thermostat in the system. (Identified by
-        the existence of the targetHeatTemperature attribute on a device).
+        the type of product being "heating" attribute on a device).
         It therefore DOES NOT support multi-zone/thermostat Hive installations, sorry!
     #>
     [psobject] SetHeatingMode([HeatingMode] $Mode) {
@@ -225,10 +225,10 @@ Class Hive {
 
     <#
         Sets the temperature value on the first thermostat device in the system.
-        $this.Nodes is always refreshed prior to execution.
+        $this.Products and $this.Devices is always refreshed prior to execution.
         This method does not identify the thermostat on which to set the temperature.
         It only sets it on the first returned thermostat in the system. (Identified by
-        the existence of the targetHeatTemperature attribute on a device).
+        the product type being "heating").
         It therefore DOES NOT support multi-zone/thermostat Hive installations, sorry!
     #>
     [psobject] SetTemperature([double] $targetTemperature) {
@@ -270,6 +270,7 @@ Class Hive {
         Boosts the heating system for the defined time.
         The [BoostTime] Enum is used to ensure proper time values are submitted.
         Always boosts to 22C - this is the same as the Hive site.
+        Send a SetTemperature() afterward to adjust the Boost up or down.
         You can re-boost at any time but the timer starts again, obviously.
     #>
     [psobject] SetBoostMode([BoostTime] $Duration) {
@@ -317,8 +318,10 @@ Class Hive {
     <#
         If the current heating mode is set to BOOST, turn it off.
         This reverts the system to its previous configuration using the
-        previousConfiguration value stored for the Thermostat when
+        previous value stored for the Thermostat when
         BOOST was activated.
+        If BOOST is activated during a schedule that has been overriden,
+        canceling boost mode reverts to the scheduled value, not the overriden value.
     #>
     [string] CancelBoostMode() {
         If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
@@ -350,7 +353,10 @@ Class Hive {
         Return "Boost mode stopped."
     }
 
-    # Get information about current holiday mode
+    <#
+        Get information about current holiday mode settings.
+        Returns a string value for start and end dates.
+    #>
     [string] GetHolidayMode() {
         If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
         Try {
@@ -379,8 +385,11 @@ Class Hive {
         Return "Holiday mode is enabled from $($Start.ToLocalTime().ToString()) -> $($End.ToLocalTime().ToString()) @ $Temp$([char]176)C."        
     }
 
-    
-    # Enable holiday mode, providing a start and end date and temperature
+    <#
+        Enable holiday mode, providing a start date, end date and temperature.
+        Ranges are checked that you don't set anything silly and have your heating on 24/7
+        while you're away.
+    #>
     [string] SetHolidayMode([datetime] $StartDateTime, [datetime] $EndDateTime, [int] $Temperature) {
         If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
 
@@ -423,7 +432,9 @@ Class Hive {
         }
     }
 
-    # Cancel holiday mode.
+    <#
+        Cancels holiday mode. Sends the request whether holiday mode is enabled or not.
+    #>
     [string] CancelHolidayMode() {
         If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
         
@@ -437,7 +448,9 @@ Class Hive {
         }
     }
 
-    # Get the current weather (temp, conditions) for the users' postcode location.
+    <#
+        Get the current weather (temp, conditions) for the users' postcode location.
+    #>
     [psobject] GetWeather() {
         If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
         $Postcode = $this.User.postcode
@@ -453,8 +466,10 @@ Class Hive {
         }
     }
 
-    # Get the current weather (temp, conditions) for a specific postcode location.
-    # Make sure the postcode is accurate or you'll likely get an error. I don't validate it!
+    <#
+        Get the current weather (temp, conditions) for a specific postcode location.
+        Make sure the postcode is accurate or you'll likely get an error. I don't validate it!
+    #>
     [psobject] GetWeather([string] $Postcode, [string] $CountryCode) {
         $Postcode = $Postcode.Replace(' ', '').ToUpper()
         $CountryCode = $CountryCode.Replace(' ', '').ToUpper()
@@ -469,13 +484,20 @@ Class Hive {
         }
     }
 
-    # Get the outside weather temperature for the users' postcode location in C
+    <#
+        Get the outside weather temperature for the users' postcode location in °C
+        Simply uses another method to retrieve the full result and return only the temp.
+    #>
     [int] GetWeatherTemperature() {
         Return $this.GetWeather().temperature.value
     }
 
-    # Use this method to save your current schedule (as set on the Hive site) to a file.
-    # Specify a directory only - the file will be named HiveSchedule-yyyyMMddHHmm.json
+    <#
+        Save your current heating schedule to a JSON formatted file.
+        Save different schedules for different times of the year and upload them as required
+        using SetHeatingScheduleFromFile().
+        Specify a directory ONLY - the file will be named HiveSchedule-yyyyMMddHHmm.json
+    #>
     [void] SaveHeatingScheduleToFile([System.IO.DirectoryInfo] $DirectoryPath) {
         If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
         If (-not $DirectoryPath.Exists) {$this.ReturnError("The path should already exist.")}
@@ -506,8 +528,11 @@ Class Hive {
         }
     }
 
-    # Reads in a JSON file containing heating schedule data. It is recommended to save a copy of your current
-    # schedule first using SaveHeatingScheduleToFile('C:\')
+    <#
+        Reads in a JSON file containing heating schedule data, checks it and uploads to the Hive site.
+        To ensure that the format is correct, it is recommended to save a copy of your current
+        schedule first using SaveHeatingScheduleToFile().
+    #>
     [string] SetHeatingScheduleFromFile([System.IO.FileInfo] $FilePath) {
         If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
         If (-not (Test-Path -Path $FilePath )) {$this.ReturnError("The file path supplied does not exist.")}
@@ -545,6 +570,11 @@ Class Hive {
         Else {Return "The schedule in the file must contain entries for all seven days."}
     }
 
+    <#
+        Advance your heating to the next setting based on the current schedule.
+        If no time period exists in the current day's schedule, the first event in the next
+        day's schedule is used.
+    #>
     [string] SetHeatingAdvance() {
         If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
 
@@ -593,12 +623,21 @@ Class Hive {
         Return "Advancing to $($NextEvent.value.target)$([char]176)C...`r`n$($this.SetTemperature($NextEvent.value.target))"
     }
 
+    <#
+        Get the object data for an Active Plug by its name.
+    #>
     hidden [psobject] GetActivePlug([string]$Name) {
         $ActivePlug = $this.Products | Where-Object {($_.type -eq "activeplug") -and ($_.state.name -eq $Name)}
         If ($ActivePlug) { Return $ActivePlug }
         Else { Return $false }
     }
 
+    <#
+        Set the mode of an active plug to be either MANUAL or SCHEDULE.
+        If you switch to schedule and the plug schedule is to be on, the plug will turn on.
+        If you subsequently switch back to MANUAL, the plug will not switch off again
+        as there is no previous configuration setting on Active Plugs.
+    #>
     [string] SetActivePlugMode([ActivePlugMode]$Mode, [string]$Name) {
         If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
 
@@ -635,7 +674,8 @@ Class Hive {
     }
 
     <#
-        Turn a named active plug on or off.
+        Set the state of a named Active Plug to be either on ($true) or off ($false).
+        Uses a boolean as opposed to a text value.
     #>
     [string] SetActivePlugState([bool]$State, [string]$Name) {
         If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
@@ -671,7 +711,5 @@ Class Hive {
         
         Return "Active Plug `"$Name`" set to $($Settings.status) successfully."
     }
-
-
 # END HIVE CLASS
 }
