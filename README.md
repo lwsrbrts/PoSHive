@@ -1,5 +1,5 @@
 # PoSHive
-A PowerShell 5 class to control your British Gas Hive (heating) system.
+A PowerShell 5 class to control your British Gas Hive (heating & plugs) system.
 
 > **This project is not sanctioned by or affiliated with British Gas in any way.**
 
@@ -13,7 +13,8 @@ Or deploy to Azure Automation - yes, the class/module [will work within a runboo
 Or [download from the releases](https://github.com/lwsrbrts/PoSHive/releases) page.
 
 
-##Release Notes
+## Release Notes
+ * [**1.4.0 - Beekeeper**](https://github.com/lwsrbrts/PoSHive/releases/tag/v1.4.0) - 01/06/2017 - Updated to the new Beekeeper API that is used on the Hive website. With Hive going global (US) the endpoint may change per country so I've set the API endpoint from the returned data after login, just like the site. Added support for Active Plugs.
  * [**1.3.1 - Someday**](https://github.com/lwsrbrts/PoSHive/releases/tag/v1.3.1) - 27/04/2016 - Bugfix. Issue preventing GetHolidayMode() method from returning a result.
  * [**1.3.0 - Advance**](https://github.com/lwsrbrts/PoSHive/releases/tag/v1.3.0) - 25/04/2016 - Added method for advancing the heating system to the next event.
  * [**1.2.0 - Scheduler**](https://github.com/lwsrbrts/PoSHive/releases/tag/v1.2.0) - 23/04/2016 - Methods for saving/setting heating schedules to/from a JSON file.
@@ -27,10 +28,10 @@ The purpose of this class is to enable you to use PowerShell (v5) scripting to e
 The class allows you to set most if not all of the same functionality as provided by the Hive website for your heating(!) system; including Heating Mode, Boost, Schedules and Holiday Schedule. Additionally, it allows you to more easily expose information about the system and its settings to enable you to perform powerful logic operations. If you find a bug or have a feature request, please open a new issue or let me know so I can resolve it.
 
 ## What can't it do?
-### Hot Water
+### Hot Water - this will be added soon (01/06/2017) because I know someone who will have a heating and hot water system installed!
 The class **does not currently support Hot Water systems** - I have a combi-boiler with on-demand hot water so I don't have a Hive hot water system and so can't develop for it unfortunately. In some cases, the code I use to determine the "device" to send commands to may conflict with the hot water system and or completely fail or cause unknown side effects. This is due simply to not having access to a hive system with hot water as I cannot see the device configuration to filter out the hot water system. I can detect if it's a hot water supporting system or not and completely prevent interaction but who knows, it "may" work as-is, I just don't know. If you can help, feel free to branch/fork and submit a pull request when you're happy to.<br/> *If you would REALLY like me to develop for these features and you don't have the skills in PowerShell, you can share your login with me and I will develop using that access. I realise that's a big ask of anyone but I'm trustworthy and only interested in improving PoSHive for everyone, not messing up your heating/hot water system.*
-### Multi-zone Systems
-The class **does not currently support multi-zone/thermostat Hive installations** - I'm not currently blessed with a large enough house to require a multi-zone Hive system so unfortunately, I'm not able to develop for this. Honestly, this is the biggest concern for me in terms of PoSHive being widely adopted as I have to make certain assumptions in the code about the primary thermostat/receiver. As a result, most of the setting methods will only retrieve the **first** thermostat identified in the system, in some cases, this might not even be the primary one you want to control if you have a multi-thermostat system. If you can help, feel free to branch and submit a pull request when you're happy to or you could send me the JSON response from a Get to /omnia/nodes (use `$h.GetClimate() | ConvertTo-Json`) and I'll see if I can determine the correct thermostat from the JSON output. <br/> *If you would REALLY like me to develop for multi-zone and you don't have the skills in PowerShell, you can share your login with me and I will develop using that access. I realise that's a big ask of anyone but I'm trustworthy and only interested in improving PoSHive for everyone, not messing up your heating/hot water system.*
+### Multi-zone Systems - may (possibly) be supported soon.
+The class **does not currently support multi-zone/thermostat Hive installations** - I'm not currently blessed with a large enough house to require a multi-zone Hive system so unfortunately, I'm not able to develop for this. Honestly, this is the biggest concern for me in terms of PoSHive being widely adopted as I have to make certain assumptions in the code about the primary thermostat/receiver. As a result, most of the setting methods will only retrieve the **first** thermostat identified in the system, in some cases, this might not even be the primary one you want to control if you have a multi-thermostat system. If you can help, feel free to branch and submit a pull request when you're happy to or you could send me the JSON response from a Get to /omnia/nodes (use `$h.GetProducts() | ConvertTo-Json`) and I'll see if I can determine the correct thermostat from the JSON output. <br/> *If you would REALLY like me to develop for multi-zone and you don't have the skills in PowerShell, you can share your login with me and I will develop using that access. I realise that's a big ask of anyone but I'm trustworthy and only interested in improving PoSHive for everyone, not messing up your heating/hot water system.*
 
 ## Examples
 Some examples of use (and the reasons why I did this)
