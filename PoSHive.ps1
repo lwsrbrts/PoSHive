@@ -30,9 +30,9 @@ Class Hive {
 
     [uri]$ApiUrl = "https://beekeeper.hivehome.com/1.0/global/login" # This is the global login URL - changes after login.
     [ValidateLength(4,100)][string] $Username
-    [ValidateLength(4,100)][string] $Password
+    [securestring] $Password
     [string] $ApiSessionId
-    hidden [string] $Agent = 'PoSHive 1.4.0 - github.com/lwsrbrts/PoSHive'
+    hidden [string] $Agent = 'PoSHive 1.4.1 - github.com/lwsrbrts/PoSHive'
     [psobject] $User
     [psobject] $Devices
     [psobject] $Products
@@ -48,7 +48,7 @@ Class Hive {
 
     Hive([string] $Username, [string] $Password) {
         $this.Username = $Username
-        $this.Password = $Password
+        $this.Password = ConvertTo-SecureString -String $Password -AsPlainText -Force
     }
 
     ###########
@@ -63,6 +63,12 @@ Class Hive {
     # Convert date time to unix time in milliseconds.
     hidden [long] DateTimeToUnixTimestamp ([datetime] $dateTime) {
         Return ($dateTime.ToUniversalTime() - [datetime]::new(1970, 1, 1, 0, 0, 0, 0, [DateTimeKind]::Utc)).TotalMilliseconds
+    }
+
+    # Decrypt a securestring back to plain text.
+    hidden [string] DecryptSecureString ([System.Security.SecureString] $SecureString) {
+        $PlainString = [Runtime.InteropServices.Marshal]::PtrToStringBSTR([Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureString))
+        Return $PlainString
     }
 
     # Return errors and terminate execution
@@ -86,7 +92,7 @@ Class Hive {
 
         $Settings = [psobject]@{
             username = $this.Username
-            password = $this.Password
+            password = ($this.DecryptSecureString($this.Password))
             devices = $true
             products = $true
         }
@@ -485,7 +491,7 @@ Class Hive {
     }
 
     <#
-        Get the outside weather temperature for the users' postcode location in °C
+        Get the outside weather temperature for the users' postcode location in ï¿½C
         Simply uses another method to retrieve the full result and return only the temp.
     #>
     [int] GetWeatherTemperature() {
@@ -711,5 +717,84 @@ Class Hive {
         
         Return "Active Plug `"$Name`" set to $($Settings.status) successfully."
     }
+
+    <#
+        Save an Active Plug schedule to a JSON formatted file.
+        Specify a directory ONLY - the file will be named HiveActivePlugSchedule-yyyyMMddHHmm.json
+    #>
+    [void] SaveActivePlugScheduleToFile([System.IO.DirectoryInfo] $DirectoryPath, [string] $Name) {
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $DirectoryPath.Exists) {$this.ReturnError("The path should already exist.")}
+
+        # Update nodes data
+        $this.Products = $this.GetProducts()
+        $this.Devices = $this.GetDevices()
+        
+        # Check that the plug name exists and assign to a var if so.
+        If (-not ($ActivePlug = $this.GetActivePlug($Name))) {
+            $this.ReturnError("The active plug name provided `"$Name`" does not exist.")
+        }
+
+        # Create the correct json structure.
+        $Settings = [psobject]@{
+            schedule = $ActivePlug.state.schedule
+        }
+
+        # Create the file output path and name.
+        $File = [System.IO.Path]::Combine($DirectoryPath, "HiveActivePlugSchedule-$(Get-Date -Format "yyyyMMdd-HHmm").json")
+
+        # Save the file to disk or error if it exists - let the user handle renaming/moving/deleting.
+        Try {
+            ConvertTo-Json -InputObject $Settings -Depth 99 | Out-File -FilePath $File -NoClobber
+        }
+        Catch {
+            $this.ReturnError("An error occurred saving the file.`r`n$_")
+        }
+    }
+
+    <#
+        Reads in a JSON file containing Active Plug schedule data, checks it and uploads to the Hive site.
+        To ensure that the format is correct, it is recommended to save a copy of your current
+        schedule first using SaveActivePlugScheduleToFile().
+        If you have multiple plugs and want them synchronised, you only have to update one schedule, save it,
+        then upload it to all the other plugs identified by name.
+    #>
+    [string] SetActivePlugScheduleFromFile([System.IO.FileInfo] $FilePath, [string] $Name) {
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not (Test-Path -Path $FilePath )) {$this.ReturnError("The file path supplied does not exist.")}
+
+        # Update nodes data
+        $this.Products = $this.GetProducts()
+        $this.Devices = $this.GetDevices()
+
+        # Check that the plug name exists and assign to a var if so.
+        If (-not ($ActivePlug = $this.GetActivePlug($Name))) {
+            $this.ReturnError("The active plug name provided `"$Name`" does not exist.")
+        }
+
+        $Settings = $null
+        
+        # Read in the schedule data from the file.
+        Try {
+            $Settings = ConvertFrom-Json -InputObject (Get-Content -Path $FilePath -Raw)
+        }
+        Catch {
+            $this.ReturnError("The file specified could not be parsed as valid JSON.`r`n$_")
+        }
+
+        # Seven days of events in the file?
+        If (((($Settings.schedule).psobject.Members | Where {$_.MemberType -eq 'NoteProperty'}).count) -eq 7) {
+            Try {
+                $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/activeplug/$($ActivePlug.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+                Return "$($ActivePlug.state.name) schedule set successfully from `"$FilePath`""
+            }
+            Catch {
+                $this.ReturnError($_)
+                Return $null
+            }
+        }
+        Else {Return "The schedule in the file must contain entries for all seven days."}
+    }
+
 # END HIVE CLASS
 }
