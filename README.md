@@ -45,7 +45,7 @@ Some examples of use (and the reasons why I did this)
 
  ![alt-text](http://www.lewisroberts.com/wp-content/uploads/2016/04/poshivebasics130.gif "PoSHive basics")
 
-Obviously these are example uses, this class simply provides the ability to control your heating system by abstracting the British Gas Hive APIv6.1 in to PowerShell classes/methods.
+Obviously these are example uses, this class simply provides the ability to control your heating system by abstracting the British Gas Hive Beekeeper API 1.0 in to PowerShell classes/methods.
 ## Using the class
 
 ### Install/download the class
@@ -83,31 +83,38 @@ $h | Get-Member
 
 Name                       MemberType Definition
 ----                       ---------- ----------
+   TypeName: Hive
+
+Name                       MemberType Definition
+----                       ---------- ----------
 CancelBoostMode            Method     string CancelBoostMode()
 CancelHolidayMode          Method     string CancelHolidayMode()
 Equals                     Method     bool Equals(System.Object obj)
-GetClimate                 Method     psobject GetClimate()
+GetDevices                 Method     psobject GetDevices()
 GetHashCode                Method     int GetHashCode()
 GetHolidayMode             Method     string GetHolidayMode()
+GetProducts                Method     psobject GetProducts()
 GetTemperature             Method     psobject GetTemperature(bool FormattedValue)
 GetType                    Method     type GetType()
-GetUser                    Method     psobject GetUser()
-GetWeather                 Method     psobject GetWeather(), psobject GetWeather(string Postcode)
+GetWeather                 Method     psobject GetWeather(), psobject GetWeather(string Postcode, string CountryCode)
 GetWeatherTemperature      Method     int GetWeatherTemperature()
 Login                      Method     void Login()
 Logout                     Method     psobject Logout()
 SaveHeatingScheduleToFile  Method     void SaveHeatingScheduleToFile(System.IO.DirectoryInfo DirectoryPath)
+SetActivePlugMode          Method     string SetActivePlugMode(ActivePlugMode Mode, string Name)
+SetActivePlugState         Method     string SetActivePlugState(bool State, string Name)
 SetBoostMode               Method     psobject SetBoostMode(BoostTime Duration)
 SetHeatingAdvance          Method     string SetHeatingAdvance()
 SetHeatingMode             Method     psobject SetHeatingMode(HeatingMode Mode)
 SetHeatingScheduleFromFile Method     string SetHeatingScheduleFromFile(System.IO.FileInfo FilePath)
-SetHolidayMode             Method     string SetHolidayMode(datetime StartDateTime, datetime EndDateTime, int Temperature)
+SetHolidayMode             Method     string SetHolidayMode(datetime StartDateTime, datetime EndDateTime, int Temperature
 SetTemperature             Method     psobject SetTemperature(double targetTemperature)
 ToString                   Method     string ToString()
 ApiSessionId               Property   string ApiSessionId {get;set;}
 ApiUrl                     Property   uri ApiUrl {get;set;}
-Nodes                      Property   psobject Nodes {get;set;}
+Devices                    Property   psobject Devices {get;set;}
 Password                   Property   string Password {get;set;}
+Products                   Property   psobject Products {get;set;}
 User                       Property   psobject User {get;set;}
 Username                   Property   string Username {get;set;}
 #>
@@ -119,10 +126,16 @@ Simply logs in to the Hive API. A session id is assigned by the Hive API that is
 $h.Login() # Returns nothing but check $h.ApiSessionId for success.
 ```
 
-### Get details about the nodes (devices)
-Doesn't provide much useful information but I leave the method open for use for example so that you can implement your own logic based on the values of attributes. Use $h.Nodes (a call to GetClimate() is made regularly and stored in this class variable).
+### Get details about the products (devices)
+Doesn't provide much useful information but I leave the method open for use for example so that you can implement your own logic based on the values of attributes. Use $h.Products (a call to GetProducts() is made regularly and stored in this class variable).
 ```powershell
-$h.GetClimate() # Returns a [PSObject]
+$h.GetProducts() # Returns a [PSObject]
+```
+
+### Get details about the devices (battery state, IP etc.)
+Doesn't provide much useful information but I leave the method open for use for example so that you can implement your own logic based on the values of attributes. Use $h.Devices (a call to GetDevices() is made regularly and stored in this class variable).
+```powershell
+$h.GetDevices() # Returns a [PSObject]
 ```
 
 ### Get the current temperature from Thermostat (formatted with symbols)
@@ -212,7 +225,7 @@ $Hive.SaveHeatingScheduleToFile('D:\Temp\') # Returns nothing. A file containing
 ```
 
 ### Set heating schedule from a file
-Upload a heating schedule from a previously saved file. The method will parse the JSON structure to ensure it's valid and also check that there are 7 days worth of events in the schedule. It cannot however ensure that you are properly following all syntax. The best solution for creating your file is simply to set the schedule on the Hive website using the GUI and then use `$h.SaveHeatingScheduleToFile()` to save it. Repeat for all the profiles you want. If you want to edit the JSON, use any text editor but I recommend Notepad++ with the JSTool plugin.
+Upload a heating schedule from a previously saved file. The method will parse the JSON structure to ensure it's valid and also check that there are 7 days worth of events in the schedule. It cannot however ensure that you are properly following all syntax. The best solution for creating your file is simply to set the schedule on the Hive website using the GUI and then use `$h.SaveHeatingScheduleToFile()` to save it. Repeat for all the profiles you want. If you want to edit the JSON, use any text editor but I recommend either Visual Studio Code or Notepad++ with the JSTool plugin.
 ```powershell
 $h.SetHeatingScheduleFromFile('D:\Temp\winter-schedule.json') # Returns "Schedule set successfully from D:\Temp\winter-schedule.json"
 ```
@@ -224,6 +237,29 @@ $h.SetHeatingAdvance()
 <#
 "Advancing to 17.0°C
 Desired temperature 17°C set successfully."
+#>
+```
+
+### Set Active Plug mode
+Enables schedule or manual mode for an Active Plug by its known name. Takes a parameter of type `[ActivePlugMode]` `MANUAL` | `SCHEDULE`
+If a plug is set to schedule mode when there is an "on" event, the plug will turn on as per the schedule. If you subsequently set the plug back to manual, it will remain in the on state.
+```powershell
+$h.SetActivePlugMode('MANUAL', 'Plug 1')
+$h.SetActivePlugMode('SCHEDULE', 'Fan')
+<#
+Active Plug "Plug 1" set to MANUAL successfully.
+Active Plug "Fan" set to SCHEDULE successfully.
+#>
+```
+
+### Set Active Plug state
+Turns an Active Plug on or off, irrespective of the current mode (manual or schedule).
+```powershell
+$h.SetActivePlugState($true, 'Plug 1')
+$h.SetActivePlugState($false, 'Fan')
+<#
+Active Plug "Plug 1" set to ON successfully.
+Active Plug "Fan" set to OFF successfully.
 #>
 ```
 
