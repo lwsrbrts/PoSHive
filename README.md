@@ -263,6 +263,16 @@ Active Plug "Fan" set to OFF successfully.
 #>
 ```
 
+### Get current power consumption (in watts)
+Gets the current power consumption (in watts) of the device attached to the Active Plug.
+
+This is handy for monitoring usage. For example, an auto-sensing clothes dryer that stays on for an indeterminate amount of time can be turned off completely when the value falls to a low number (indicating it has finished the drying cycle).
+
+_This methos is of particular interest to me since I have an auto-sensing dryer which, once it has finished the drying cycle, continues to make an annoying beeping noise every 30 seconds until you open the door or turn it off, meaning it can't be used before going to bed._
+```powershell
+$h.GetActivePlugPowerConsumption('Plug 1') # Returns eg. "33"
+```
+
 ### Log out
 The session will automatically expire from the Hive API in approx 20 minutes but if you're performing just a few actions, log out anyway.
 ```powershell

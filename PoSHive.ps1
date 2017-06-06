@@ -32,7 +32,7 @@ Class Hive {
     [ValidateLength(4,100)][string] $Username
     [securestring] $Password
     [string] $ApiSessionId
-    hidden [string] $Agent = 'PoSHive 1.4.1 - github.com/lwsrbrts/PoSHive'
+    hidden [string] $Agent = 'PoSHive 1.4.2 - github.com/lwsrbrts/PoSHive'
     [psobject] $User
     [psobject] $Devices
     [psobject] $Products
@@ -796,5 +796,27 @@ Class Hive {
         Else {Return "The schedule in the file must contain entries for all seven days."}
     }
 
+    <#
+        Get the current power consumption, in watts, of the named Active Plug.
+        This is useful for monitoring devices that might run for an indeterminate
+        amount of time, such as an auto-sensing clothes dryer. As this value falls to a low number,
+        the Active Plug can be turned off.
+    #>
+    [int] GetActivePlugPowerConsumption([string] $Name) {
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+
+        # Update nodes data
+        $this.Products = $this.GetProducts()
+        $this.Devices = $this.GetDevices()
+        
+        # Check that the plug name exists and assign to a var if so.
+        If (-not ($ActivePlug = $this.GetActivePlug($Name))) {
+            $this.ReturnError("The active plug name provided `"$Name`" does not exist.")
+        }
+
+        # Return the current power consumption.
+        Return $ActivePlug.props.powerConsumption    
+    }
+
 # END HIVE CLASS
-}
+}    
