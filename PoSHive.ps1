@@ -32,7 +32,7 @@ Class Hive {
     [ValidateLength(4,100)][string] $Username
     [securestring] $Password
     [string] $ApiSessionId
-    hidden [string] $Agent = 'PoSHive 1.4.2 - github.com/lwsrbrts/PoSHive'
+    hidden [string] $Agent = 'PoSHive 1.4.3 - github.com/lwsrbrts/PoSHive'
     [psobject] $User
     [psobject] $Devices
     [psobject] $Products
@@ -119,6 +119,7 @@ Class Hive {
             # Needs some error checking.
             $this.ApiSessionId = $null
             $this.Headers.Remove('Authorization')
+            $this.ApiUrl = "https://beekeeper.hivehome.com/1.0/global/login" # Reset the login URL.
             Return "Logged out successfully."
         }
         Catch {
@@ -816,6 +817,31 @@ Class Hive {
 
         # Return the current power consumption.
         Return $ActivePlug.props.powerConsumption    
+    }
+
+    <#
+        Get Active Plug State - whether it is currently on or off.
+    #>
+    [bool] GetActivePlugState([string]$Name) {
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+
+        # Update nodes
+        $this.Products = $this.GetProducts()
+        $this.Devices = $this.GetDevices()
+
+        # Check that the plug name exists and assign to a var if so.
+        If (-not ($ActivePlug = $this.GetActivePlug($Name))) {
+            $this.ReturnError("The active plug name provided `"$Name`" does not exist.")
+        }
+
+        $State = $null
+
+        Switch ($ActivePlug.state.status) {
+           {($_ -eq "ON") } { $State = $true }
+           {($_ -eq "OFF") } { $State = $false }
+           Default { $State = $null }
+        }
+        Return $State
     }
 
 # END HIVE CLASS
