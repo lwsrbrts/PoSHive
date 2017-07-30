@@ -179,9 +179,37 @@ Class Hive {
             $this.Products = $this.GetProducts()
             $this.Devices = $this.GetDevices()
 
-            If (($this.Products | Where-Object {$_.type -eq "heating"}).Count -is [int]) { $this.ReturnError('There is more than one product of type "heating". Apologies but this module does not currently support multiple heat zones.') }
+            If (($this.Products | Where-Object {$_.type -eq "heating"}).Count -is [int]) { $this.ReturnError('There is more than one product of type "heating". Please identify which heating zone by providing the zone name.') }
 
             $HeatingNode = $this.Products | Where-Object {$_.type -eq "heating"}
+
+            $Temperature = [Math]::Round([double]$HeatingNode.props.temperature, 1)
+
+            If ($FormattedValue) {Return "$($Temperature.ToString())$([char] 176 )C"}
+            Else {Return $Temperature}
+        }
+        Catch {
+            $this.ReturnError($_)
+            Return $null
+        }
+    }
+
+    <#
+        Does what it says on the tin. Returns the currently reported temperature
+        value from the specified zone.
+        Provide $true to get a formatted value: eg. 21.1C
+        Provide $false to get a simple decimal: eg. 21.1
+    #>
+    [psobject] GetTemperature([bool] $FormattedValue, [string] $ZoneName) {
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        Try {
+            $this.Products = $this.GetProducts()
+            $this.Devices = $this.GetDevices()
+
+            If (($this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}).Count -is [int]) { $this.ReturnError('No heating zones matching the name provided: `"$ZoneName`" were found.') }
+            
+            # Find out the correct node to send the temp to. Only the first Thermostat we find!
+            $HeatingNode = $this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}
 
             $Temperature = [Math]::Round([double]$HeatingNode.props.temperature, 1)
 
@@ -209,7 +237,7 @@ Class Hive {
         $this.Products = $this.GetProducts()
         $this.Devices = $this.GetDevices()
 
-        If (($this.Products | Where-Object {$_.type -eq "heating"}).Count -is [int]) { $this.ReturnError('There is more than one product of type "heating". Apologies but this module does not currently support multiple heat zones.') }
+        If (($this.Products | Where-Object {$_.type -eq "heating"}).Count -is [int]) { $this.ReturnError('There is more than one product of type "heating". Please identify which heating zone by providing the zone name.') }
         
         # Find out the correct node to send the temp to. Only the first Thermostat we find!
         $Thermostat = $this.Products | Where-Object {$_.type -eq "heating"} | Select -First 1
@@ -227,8 +255,41 @@ Class Hive {
             $this.ReturnError($_)
             Return $null
         }
-        
     }
+
+    <#
+        Sets the heating mode to one of the [HeatingMode] enum values. ie.
+        SCHEDULE, MANUAL, OFF. $this.Products and $this Devices is always refreshed prior to execution.
+        This method identifies the thermostat/programmer to change by the zone name and it does support multi-zones.
+    #>
+    [psobject] SetHeatingMode([HeatingMode] $Mode, [string] $ZoneName) {
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+
+        # Update nodes
+        $this.Products = $this.GetProducts()
+        $this.Devices = $this.GetDevices()
+
+        If (($this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}).Count -is [int]) { $this.ReturnError('No heating zones matching the name provided: `"$ZoneName`" were found.') }
+        
+        # Find out the correct node to send the temp to. Only the first Thermostat we find!
+        $Thermostat = $this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}
+
+        $Settings = [psobject]@{
+            mode = $Mode.ToString()
+        }
+        If ($Mode -eq 'MANUAL') { $Settings.Add('target',20) }
+
+        Try {
+            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/heating/$($Thermostat.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+            Return "Heating mode set to $($Mode.ToString()) successfully."
+        }
+        Catch {
+            $this.ReturnError($_)
+            Return $null
+        }
+    }
+
+
 
     <#
         Sets the temperature value on the first thermostat device in the system.
