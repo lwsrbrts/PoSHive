@@ -207,7 +207,7 @@ Class Hive {
 
             If (($this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}).Count -is [int]) { $this.ReturnError('No heating zones matching the name provided: `"$ZoneName`" were found.') }
             
-            # Find out the correct node to send the temp to. Only the first Thermostat we find!
+            # Find out the correct node to send the command to. Only the first heating node returned.
             $HeatingNode = $this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}
 
             $Temperature = [Math]::Round([double]$HeatingNode.props.temperature, 1)
@@ -223,11 +223,9 @@ Class Hive {
 
     <#
         Sets the heating mode to one of the [HeatingMode] enum values. ie.
-        SCHEDULE, MANUAL, OFF. $this.Products and $this Devices is always refreshed prior to execution.
-        This method does not identify the Thermostat on which to set the mode,
-        it only sets it on the first returned thermostat in the system. (Identified by
-        the type of product being "heating" attribute on a device).
-        It therefore DOES NOT support multi-zone/thermostat Hive installations, sorry!
+        SCHEDULE, MANUAL, OFF. $this.Products and $this.Devices is always refreshed prior to execution.
+        This method does not identify the Thermostat on which to set the mode and is suitable only
+        single zone heating systems. For multi-zone use the overload and define the zone name as well.
     #>
     [psobject] SetHeatingMode([HeatingMode] $Mode) {
         If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
@@ -258,7 +256,7 @@ Class Hive {
 
     <#
         Sets the heating mode to one of the [HeatingMode] enum values. ie.
-        SCHEDULE, MANUAL, OFF. $this.Products and $this Devices is always refreshed prior to execution.
+        SCHEDULE, MANUAL, OFF. $this.Products and $this.Devices is always refreshed prior to execution.
         This method identifies the thermostat/programmer to change by the zone name and it does support multi-zones.
     #>
     [psobject] SetHeatingMode([string] $ZoneName, [HeatingMode] $Mode) {
@@ -270,7 +268,7 @@ Class Hive {
 
         If (($this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}).Count -is [int]) { $this.ReturnError('No heating zones matching the name provided: `"$ZoneName`" were found.') }
         
-        # Find out the correct node to send the temp to. Only the first Thermostat we find!
+        # Find out the correct node to send the command to by using its name.
         $Thermostat = $this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}
 
         $Settings = [psobject]@{
@@ -304,7 +302,7 @@ Class Hive {
 
         If (($this.Products | Where-Object {$_.type -eq "heating"}).Count -is [int]) { $this.ReturnError('There is more than one product of type "heating". Please identify which heating zone by providing the zone name.') }
         
-        # Find out the correct node to send the temp to. Only the first Thermostat we find!
+        # Find out the correct node to send the commands to.
         $Thermostat = $this.Products | Where-Object {$_.type -eq "heating"} | Select -First 1
 
         # Check the heating is not in OFF state
@@ -343,7 +341,7 @@ Class Hive {
 
         If (($this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}).Count -is [int]) { $this.ReturnError('No heating zones matching the name provided: `"$ZoneName`" were found.') }
         
-        # Find out the correct node to send the temp to. Only the first Thermostat we find!
+       # Find out the correct node to send the commands to.
         $Thermostat = $this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}
 
         # Check the heating is not in OFF state
@@ -372,6 +370,7 @@ Class Hive {
         Always boosts to 22C - this is the same as the Hive site.
         Send a SetTemperature() afterward to adjust the Boost up or down.
         You can re-boost at any time but the timer starts again, obviously.
+        This boosts only a single zone. For multi-zone systems, use the overload and define the zone name.
     #>
     [psobject] SetBoostMode([BoostTime] $Duration) {
         If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
@@ -382,7 +381,7 @@ Class Hive {
 
         If (($this.Products | Where-Object {$_.type -eq "heating"}).Count -is [int]) { $this.ReturnError('There is more than one product of type "heating". Please identify which heating zone by providing the zone name.') }
         
-        # Find out the correct node to send the temp to. Only the first Thermostat we find!
+        # Find out the correct node to send the commands to.
         $Thermostat = $this.Products | Where-Object {$_.type -eq "heating"} | Select -First 1
 
         $ApiDuration = $null # Creating so it's there!
@@ -416,7 +415,7 @@ Class Hive {
     }
 
     <#
-        Boosts the heating system for the defined time.
+        Boosts the named heating zone for the defined time.
         The [BoostTime] Enum is used to ensure proper time values are submitted.
         Always boosts to 22C - this is the same as the Hive site.
         Send a SetTemperature() afterward to adjust the Boost up or down.
@@ -431,7 +430,7 @@ Class Hive {
 
         If (($this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}).Count -is [int]) { $this.ReturnError('No heating zones matching the name provided: `"$ZoneName`" were found.') }
         
-        # Find out the correct node to send the temp to. Only the first Thermostat we find!
+        # Find out the correct node to send the commands to.
         $Thermostat = $this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}
 
         $ApiDuration = $null # Creating so it's there!
@@ -481,7 +480,7 @@ Class Hive {
 
         If (($this.Products | Where-Object {$_.type -eq "heating"}).Count -is [int]) { $this.ReturnError('There is more than one product of type "heating". Please identify which heating zone by providing the zone name.') }
         
-        # Find out the correct node to send the temp to. Only the first Thermostat we find!
+        # Find out the correct node to send the commands to.
         $Thermostat = $this.Products | Where-Object {$_.type -eq "heating"} | Select -First 1
 
         # If the system isn't set to BOOST, return without doing anything.
@@ -503,7 +502,7 @@ Class Hive {
     }
 
     <#
-        If the current heating mode is set to BOOST, turn it off.
+        If the named heating zone mode is set to BOOST, turns it off.
         This reverts the system to its previous configuration using the
         previous value stored for the Thermostat when
         BOOST was activated.
@@ -519,7 +518,7 @@ Class Hive {
 
         If (($this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}).Count -is [int]) { $this.ReturnError('No heating zones matching the name provided: `"$ZoneName`" were found.') }
         
-        # Find out the correct node to send the temp to. Only the first Thermostat we find!
+        # Find out the correct node to send the commands to.
         $Thermostat = $this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}
 
         # If the system isn't set to BOOST, return without doing anything.
@@ -673,7 +672,7 @@ Class Hive {
     }
 
     <#
-        Get the outside weather temperature for the users' postcode location in �C
+        Get the outside weather temperature for the users' postcode location in C
         Simply uses another method to retrieve the full result and return only the temp.
     #>
     [int] GetWeatherTemperature() {
@@ -696,7 +695,7 @@ Class Hive {
 
         If (($this.Products | Where-Object {$_.type -eq "heating"}).Count -is [int]) { $this.ReturnError('There is more than one product of type "heating". Please identify which heating zone by providing the zone name.') }
         
-        # Find out the correct node to send the temp to. Only the first Thermostat we find!
+        # Find out the correct node to send the commands to.
         $Thermostat = $this.Products | Where-Object {$_.type -eq "heating"} | Select -First 1
 
         # Create the correct json structure.
@@ -717,7 +716,7 @@ Class Hive {
     }
 
     <#
-        Save your current heating schedule to a JSON formatted file.
+        Save your named heating zone schedule to a JSON formatted file.
         Save different schedules for different times of the year and upload them as required
         using SetHeatingScheduleFromFile().
         Specify a directory ONLY - the file will be named HiveSchedule-yyyyMMddHHmm.json
@@ -732,7 +731,7 @@ Class Hive {
 
         If (($this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}).Count -is [int]) { $this.ReturnError('No heating zones matching the name provided: `"$ZoneName`" were found.') }
         
-        # Find out the correct node to send the temp to. Only the first Thermostat we find!
+        # Find out the correct node to send the commands to.
         $Thermostat = $this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}
 
         # Create the correct json structure.
@@ -768,7 +767,7 @@ Class Hive {
 
         If (($this.Products | Where-Object {$_.type -eq "heating"}).Count -is [int]) { $this.ReturnError('There is more than one product of type "heating". Please identify which heating zone by providing the zone name.') }
         
-        # Find out the correct node to send the temp to. Only the first Thermostat we find!
+        # Find out the correct node to send the commands to.
         $Thermostat = $this.Products | Where-Object {$_.type -eq "heating"} | Select -First 1
 
         $Settings = $null
@@ -795,6 +794,9 @@ Class Hive {
         Else {Return "The schedule in the file must contain entries for all seven days."}
     }
 
+    <#
+        Set a heating zone schedule from a saved schedule file.
+    #>
     [string] SetHeatingScheduleFromFile([string] $ZoneName, [System.IO.FileInfo] $FilePath) {
         If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
         If (-not (Test-Path -Path $FilePath )) {$this.ReturnError("The file path supplied does not exist.")}
@@ -805,7 +807,7 @@ Class Hive {
 
         If (($this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}).Count -is [int]) { $this.ReturnError('No heating zones matching the name provided: `"$ZoneName`" were found.') }
         
-        # Find out the correct node to send the temp to. Only the first Thermostat we find!
+        # Find out the correct node to send the commands to.
         $Thermostat = $this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}
 
         $Settings = $null
@@ -886,7 +888,7 @@ Class Hive {
     }
 
     <#
-        Advance your heating to the next setting based on the current schedule.
+        Advance the named heating zone to the next slot based on the current schedule.
         If no time period exists in the current day's schedule, the first event in the next
         day's schedule is used.
     #>
@@ -899,7 +901,7 @@ Class Hive {
 
         If (($this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}).Count -is [int]) { $this.ReturnError('No heating zones matching the name provided: `"$ZoneName`" were found.') }
         
-        # Find out the correct node to send the temp to. Only the first Thermostat we find!
+        # Find out the correct node to send the commands to.
         $Thermostat = $this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}
 
         # Check the heating is in SCHEDULE mode.
@@ -1165,7 +1167,7 @@ Class Hive {
 
         If (($this.Products | Where-Object {$_.type -eq "hotwater"}).Count -is [int]) { $this.ReturnError('There is no hot water device attached to this system.') }
         
-        # Find out the correct node to send the command to.
+        # Find out the correct node to send the commands to.
         $HotWater = $this.Products | Where-Object {$_.type -eq "hotwater"} | Select -First 1
 
         $Settings = [psobject]@{
@@ -1194,7 +1196,7 @@ Class Hive {
 
         If (($this.Products | Where-Object {$_.type -eq "hotwater"}).Count -is [int]) { $this.ReturnError('There is no hot water device attached to this system.') }
         
-        # Find out the correct node to send the temp to. Only the first Thermostat we find!
+        # Find out the correct node to send the commands to.
         $HotWater = $this.Products | Where-Object {$_.type -eq "hotwater"} | Select -First 1
 
         $ApiDuration = $null # Creating so it's there!
@@ -1237,7 +1239,7 @@ Class Hive {
 
         If (($this.Products | Where-Object {$_.type -eq "hotwater"}).Count -is [int]) { $this.ReturnError('There is no hot water device attached to this system.') }
         
-        # Find out the correct node to send the commands to. Only the first hot water device we find!
+        # Find out the correct node to send the commands to.
         $HotWater = $this.Products | Where-Object {$_.type -eq "hotwater"} | Select -First 1
 
         # If the system isn't set to BOOST, return without doing anything.
@@ -1268,7 +1270,7 @@ Class Hive {
 
         If (($this.Products | Where-Object {$_.type -eq "hotwater"}).Count -is [int]) { $this.ReturnError('There is no hot water device attached to this system.') }
         
-        # Find out the correct node to send the temp to. Only the first Thermostat we find!
+        # Find out the correct node to send the commands to.
         $HotWater = $this.Products | Where-Object {$_.type -eq "hotwater"} | Select -First 1
 
         # Create the correct json structure.
@@ -1303,7 +1305,7 @@ Class Hive {
 
         If (($this.Products | Where-Object {$_.type -eq "hotwater"}).Count -is [int]) { $this.ReturnError('There is no hot water device attached to this system.') }
         
-        # Find out the correct node to send the temp to. Only the first Thermostat we find!
+        # Find out the correct node to send the commands to.
         $HotWater = $this.Products | Where-Object {$_.type -eq "hotwater"} | Select -First 1
 
         $Settings = $null
