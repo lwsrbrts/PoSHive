@@ -32,7 +32,7 @@ Class Hive {
     [ValidateLength(4,100)][string] $Username
     [securestring] $Password
     [string] $ApiSessionId
-    hidden [string] $Agent = 'PoSHive 1.4.3 - github.com/lwsrbrts/PoSHive'
+    hidden [string] $Agent = 'PoSHive 2.0.0 - github.com/lwsrbrts/PoSHive'
     [psobject] $User
     [psobject] $Devices
     [psobject] $Products
@@ -407,7 +407,7 @@ Class Hive {
 
         Try {
             $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/heating/$($Thermostat.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
-            Return "BOOST mode activated for $ApiDuration minutes at $($ApiTemperature.ToString())$([char] 176 )C"
+            Return "Heating BOOST activated for $ApiDuration minutes at $($ApiTemperature.ToString())$([char] 176 )C"
         }
         Catch {
             $this.ReturnError($_)
@@ -456,7 +456,7 @@ Class Hive {
 
         Try {
             $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/heating/$($Thermostat.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
-            Return "BOOST mode activated for $ApiDuration minutes at $($ApiTemperature.ToString())$([char] 176 )C"
+            Return "Heating BOOST activated for $ApiDuration minutes at $($ApiTemperature.ToString())$([char] 176 )C in $ZoneName"
         }
         Catch {
             $this.ReturnError($_)
@@ -499,7 +499,7 @@ Class Hive {
             Default {$this.SetHeatingMode('SCHEDULE')}
         }
 
-        Return "Boost mode stopped."
+        Return "Heating BOOST cancelled."
     }
 
     <#
@@ -537,7 +537,7 @@ Class Hive {
             Default {$this.SetHeatingMode('SCHEDULE')}
         }
 
-        Return "Boost mode stopped."
+        Return "Heating BOOST cancelled in $ZoneName."
     }
 
 
@@ -1153,5 +1153,182 @@ Class Hive {
         Return $State
     }
 
+    <#
+        Set the Hot Water mode. Requires one of the following: OFF, MANUAL, SCHEDULE
+    #>
+    [psobject] SetHotWaterMode([HeatingMode] $Mode) {
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+
+        # Update nodes
+        $this.Products = $this.GetProducts()
+        $this.Devices = $this.GetDevices()
+
+        If (($this.Products | Where-Object {$_.type -eq "hotwater"}).Count -is [int]) { $this.ReturnError('There is no hot water device attached to this system.') }
+        
+        # Find out the correct node to send the command to.
+        $HotWater = $this.Products | Where-Object {$_.type -eq "hotwater"} | Select -First 1
+
+        $Settings = [psobject]@{
+            mode = $Mode.ToString()
+        }
+
+        Try {
+            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/hotwater/$($HotWater.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+            Return "Hot water mode set to $($Mode.ToString()) successfully."
+        }
+        Catch {
+            $this.ReturnError($_)
+            Return $null
+        }
+    }
+
+    <#
+        Hot water boost.
+    #>
+    [psobject] SetHotWaterBoostMode([BoostTime] $Duration) {
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        
+        # Update nodes
+        $this.Products = $this.GetProducts()
+        $this.Devices = $this.GetDevices()
+
+        If (($this.Products | Where-Object {$_.type -eq "hotwater"}).Count -is [int]) { $this.ReturnError('There is no hot water device attached to this system.') }
+        
+        # Find out the correct node to send the temp to. Only the first Thermostat we find!
+        $HotWater = $this.Products | Where-Object {$_.type -eq "hotwater"} | Select -First 1
+
+        $ApiDuration = $null # Creating so it's there!
+
+        Switch ($Duration) {
+            'HALF' {$ApiDuration = 30}
+            'ONE' {$ApiDuration = 60}
+            'TWO' {$ApiDuration = 120}
+            'THREE' {$ApiDuration = 180}
+            'FOUR' {$ApiDuration = 240}
+            'FIVE' {$ApiDuration = 300}
+            'SIX' {$ApiDuration = 360}
+        }
+
+        # JSON structure in a PSObject
+        $Settings = [psobject]@{
+            mode = 'BOOST'
+            boost = $ApiDuration
+        }
+
+        Try {
+            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/hotwater/$($HotWater.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+            Return "Hot water BOOST activated for $ApiDuration minutes."
+        }
+        Catch {
+            $this.ReturnError($_)
+            Return $null
+        }
+    }
+
+    <#
+        Cancel hot water boost.
+    #>
+    [string] CancelHotWaterBoostMode() {
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        
+        # Update nodes
+        $this.Products = $this.GetProducts()
+        $this.Devices = $this.GetDevices()
+
+        If (($this.Products | Where-Object {$_.type -eq "hotwater"}).Count -is [int]) { $this.ReturnError('There is no hot water device attached to this system.') }
+        
+        # Find out the correct node to send the commands to. Only the first hot water device we find!
+        $HotWater = $this.Products | Where-Object {$_.type -eq "hotwater"} | Select -First 1
+
+        # If the system isn't set to BOOST, return without doing anything.
+        If ($HotWater.state.mode -ne 'BOOST') {
+            $this.ReturnError("The current hot water mode is not BOOST.")
+        }
+        
+        Switch ($HotWater.props.previous.mode) {
+            SCHEDULE { $this.SetHotWaterMode('SCHEDULE') }
+            MANUAL { $this.SetHotWaterMode('MANUAL') }
+            OFF { $this.SetHotWaterMode('OFF') }
+            Default {$this.SetHotWaterMode('OFF')}
+        }
+
+        Return "Hot water BOOST cancelled."
+    }
+
+    <#
+        Save hot water schedule to a file.
+    #>
+    [void] SaveHotWaterScheduleToFile([System.IO.DirectoryInfo] $DirectoryPath) {
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $DirectoryPath.Exists) {$this.ReturnError("The path should already exist.")}
+
+        # Update nodes data
+        $this.Products = $this.GetProducts()
+        $this.Devices = $this.GetDevices()
+
+        If (($this.Products | Where-Object {$_.type -eq "hotwater"}).Count -is [int]) { $this.ReturnError('There is no hot water device attached to this system.') }
+        
+        # Find out the correct node to send the temp to. Only the first Thermostat we find!
+        $HotWater = $this.Products | Where-Object {$_.type -eq "hotwater"} | Select -First 1
+
+        # Create the correct json structure.
+        $Settings = [psobject]@{
+            schedule = $HotWater.state.schedule
+        }
+
+        # Create the file output path and name.
+        $File = [System.IO.Path]::Combine($DirectoryPath, "HiveHotWaterSchedule-$(Get-Date -Format "yyyyMMdd-HHmm").json")
+
+        # Save the file to disk or error if it exists - let the user handle renaming/moving/deleting.
+        Try {
+            ConvertTo-Json -InputObject $Settings -Depth 99 | Out-File -FilePath $File -NoClobber
+        }
+        Catch {
+            $this.ReturnError("An error occurred saving the file.`r`n$_")
+        }
+    }
+
+    <#
+        Reads in a JSON file containing heating schedule data, checks it and uploads to the Hive site.
+        To ensure that the format is correct, it is recommended to save a copy of your current
+        schedule first using SaveHeatingScheduleToFile().
+    #>
+    [string] SetHotWaterScheduleFromFile([System.IO.FileInfo] $FilePath) {
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not (Test-Path -Path $FilePath )) {$this.ReturnError("The file path supplied does not exist.")}
+
+        # Update nodes data
+        $this.Products = $this.GetProducts()
+        $this.Devices = $this.GetDevices()
+
+        If (($this.Products | Where-Object {$_.type -eq "hotwater"}).Count -is [int]) { $this.ReturnError('There is no hot water device attached to this system.') }
+        
+        # Find out the correct node to send the temp to. Only the first Thermostat we find!
+        $HotWater = $this.Products | Where-Object {$_.type -eq "hotwater"} | Select -First 1
+
+        $Settings = $null
+        
+        # Read in the schedule data from the file.
+        Try {
+            $Settings = ConvertFrom-Json -InputObject (Get-Content -Path $FilePath -Raw)
+        }
+        Catch {
+            $this.ReturnError("The file specified could not be parsed as valid JSON.`r`n$_")
+        }
+
+        # Seven days of events in the file?
+        If (((($Settings.schedule).psobject.Members | Where {$_.MemberType -eq 'NoteProperty'}).count) -eq 7) {
+            Try {
+                $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/hotwater/$($HotWater.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+                Return "Schedule set successfully from $FilePath"
+            }
+            Catch {
+                $this.ReturnError($_)
+                Return $null
+            }
+        }
+        Else {Return "The schedule in the file must contain entries for all seven days."}
+    }
+    
 # END HIVE CLASS
 }    
