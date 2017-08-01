@@ -1,5 +1,5 @@
 # PoSHive
-A PowerShell 5 class to control your British Gas Hive (heating & plugs) system.
+A PowerShell 5 class to control your British Gas Hive system including heating, multi-zone, hot water & active plugs.
 
 > **This project is not sanctioned by or affiliated with British Gas in any way.**
 
@@ -14,6 +14,7 @@ Or [download from the releases](https://github.com/lwsrbrts/PoSHive/releases) pa
 
 
 ## Release Notes
+ * [**2.0.0 - Hot zone**](https://github.com/lwsrbrts/PoSHive/releases/tag/v2.0.0) - 01/08/2017 - Finally added multi-zone and hot water support to the class!
  * [**1.4.0 - Beekeeper**](https://github.com/lwsrbrts/PoSHive/releases/tag/v1.4.0) - 01/06/2017 - Updated to the new Beekeeper API that is used on the Hive website. With Hive going global (US) the endpoint may change per country so I've set the API endpoint from the returned data after login, just like the site. Added support for Active Plugs.
  * [**1.3.1 - Someday**](https://github.com/lwsrbrts/PoSHive/releases/tag/v1.3.1) - 27/04/2016 - Bugfix. Issue preventing GetHolidayMode() method from returning a result.
  * [**1.3.0 - Advance**](https://github.com/lwsrbrts/PoSHive/releases/tag/v1.3.0) - 25/04/2016 - Added method for advancing the heating system to the next event.
@@ -24,14 +25,14 @@ Or [download from the releases](https://github.com/lwsrbrts/PoSHive/releases) pa
  * **1.0.0 - Release** - 07/04/2016 - first release of the PoSHive class. Allows getting, setting temperature, setting heating mode to auto, manual or off. Turning on or cancelling of Boost mode.
 
 ## Purpose
-The purpose of this class is to enable you to use PowerShell (v5) scripting to exert more powerful logic control over the state of your heating(!) system.
-The class allows you to set most if not all of the same functionality as provided by the Hive website for your heating(!) system; including Heating Mode, Boost, Schedules and Holiday Schedule. Additionally, it allows you to more easily expose information about the system and its settings to enable you to perform powerful logic operations. If you find a bug or have a feature request, please open a new issue or let me know so I can resolve it.
+The purpose of this class is to enable you to use PowerShell (v5) scripting to exert more powerful logic control over the state of your Hive system.
+The class allows you to set most if not all of the same functionality as provided by the Hive website for your Hive system; including Heating and hot water Mode, Boost, Schedules and Holiday Schedule. Additionally, it allows you to more easily expose information about the system and its settings to enable you to perform powerful logic operations. If you find a bug or have a feature request, please open a new issue or let me know so I can resolve it.
 
 ## What can't it do?
-### Hot Water - this will be added soon (01/06/2017) because I know someone who will have a heating and hot water system installed!
-The class **does not currently support Hot Water systems** - I have a combi-boiler with on-demand hot water so I don't have a Hive hot water system and so can't develop for it unfortunately. In some cases, the code I use to determine the "device" to send commands to may conflict with the hot water system and or completely fail or cause unknown side effects. This is due simply to not having access to a hive system with hot water as I cannot see the device configuration to filter out the hot water system. I can detect if it's a hot water supporting system or not and completely prevent interaction but who knows, it "may" work as-is, I just don't know. If you can help, feel free to branch/fork and submit a pull request when you're happy to.<br/> *If you would REALLY like me to develop for these features and you don't have the skills in PowerShell, you can share your login with me and I will develop using that access. I realise that's a big ask of anyone but I'm trustworthy and only interested in improving PoSHive for everyone, not messing up your heating/hot water system.*
-### Multi-zone Systems - may (possibly) be supported soon.
-The class **does not currently support multi-zone/thermostat Hive installations** - I'm not currently blessed with a large enough house to require a multi-zone Hive system so unfortunately, I'm not able to develop for this. Honestly, this is the biggest concern for me in terms of PoSHive being widely adopted as I have to make certain assumptions in the code about the primary thermostat/receiver. As a result, most of the setting methods will only retrieve the **first** thermostat identified in the system, in some cases, this might not even be the primary one you want to control if you have a multi-thermostat system. If you can help, feel free to branch and submit a pull request when you're happy to or you could send me the JSON response from a Get to /omnia/nodes (use `$h.GetProducts() | ConvertTo-Json`) and I'll see if I can determine the correct thermostat from the JSON output. <br/> *If you would REALLY like me to develop for multi-zone and you don't have the skills in PowerShell, you can share your login with me and I will develop using that access. I realise that's a big ask of anyone but I'm trustworthy and only interested in improving PoSHive for everyone, not messing up your heating/hot water system.*
+There's no support for:
+ * Active Lights
+ * Sensors
+
 
 ## Examples
 Some examples of use (and the reasons why I did this)
@@ -138,19 +139,31 @@ Doesn't provide much useful information but I leave the method open for use for 
 $h.GetDevices() # Returns a [PSObject]
 ```
 
-### Get the current temperature from Thermostat (formatted with symbols)
+### Get the current temperature from Thermostat (formatted with symbols) (single-zone system)
 ```powershell
 $h.GetTemperature($true) # Returns 21.1°C
 ```
-### Get the current temperature from Thermostat (unformatted)
+
+### Get the current temperature from the named zone's thermostat (formatted with symbols) (multi-zone system)
+```powershell
+$h.GetTemperature('FirstFloor', $true) # Returns 21.1°C
+```
+
+### Get the current temperature from Thermostat (unformatted) (single-zone system)
 ```powershell
 $h.GetTemperature($false) # Returns 21.1
+```
+
+### Get the current temperature from the named zone's thermostat (unformatted) (multi-zone system)
+```powershell
+$h.GetTemperature('FirstFloor', $false) # Returns 21.1
 ```
 
 ### Set the temperature
 Only works if heating mode is not currently **OFF**. Yes, I could turn the heating on in order to set the temperature but to what mode? That's up to you so I left this.
 ```powershell
-$h.SetTemperature(21.5) # Returns "Desired temperature 21.5°C set successfully."
+$h.SetTemperature(21.5) # Single-zone - returns "Desired temperature 21.5°C set successfully."
+$h.SetTemperature('FirstFloor', 21.5) # Multi-zone - returns "Desired temperature 21.5°C set successfully."
 ```
 
 ### Change the heating mode
@@ -159,7 +172,11 @@ Takes a parameter of type `[HeatingMode]` `OFF` | `MANUAL` | `SCHEDULE`
 $h.SetHeatingMode('OFF')
 $h.SetHeatingMode('MANUAL')
 $h.SetHeatingMode('SCHEDULE')
-# Returns "Heating mode set to [mode] successfully."
+# Returns "Heating mode set to [mode] successfully in a single-zone system."
+$h.SetHeatingMode('FirstFloor', 'OFF')
+$h.SetHeatingMode('FirstFloor', 'MANUAL')
+$h.SetHeatingMode('FirstFloor', 'SCHEDULE')
+# Returns "Heating mode set to [mode] successfully in a multi-zone system."
 ```
 
 ### Boost the heating system for the defined time.
@@ -174,12 +191,14 @@ $h.SetBoostMode('FOUR')
 $h.SetBoostMode('FIVE')
 $h.SetBoostMode('SIX')
 # Returns "BOOST mode activated for [n] minutes at 22°C"
+$h.SetBoostMode('FirstFloor', 'HALF') # Returns "BOOST mode activated for [n] minutes at 22°C ina  multi-zone system."
 ```
 
 ### Cancel a currently active boost
 If the current heating mode is set to BOOST, turn it off. This reverts the system to its previous configuration using the `previousConfiguration` value stored for the Thermostat when BOOST was activated. ie. If it was MANUAL 20°C, it'll be returned to MANUAL 20°C.
 ```powershell
-$h.CancelBoostMode() # Returns "Boost mode stopped."
+$h.CancelBoostMode() # Returns "Boost mode stopped in a single-zone system."
+$h.CancelBoostMode('FirstFloor') # Returns "Boost mode stopped in a multi-zone system."
 ```
 
 ### Enable Holiday mode
@@ -222,22 +241,64 @@ Save the currently defined heating schedule to a file for editing.<br/>
 **_Why?_** You could have different schedules for each season (Spring, Summer, Autumn, Winter) saved to files. Using `$h.SetHeatingScheduleFromFile()` you can implement your seasonal heating settings without fiddling with the website.<br/>*I'd like to see Hive implement this feature in the API actually. Having 4 heating profiles that can be saved to your user account/profile that can be recalled as required or scheduled to become active on certain dates (like the start of each season) - that's "smart".*
 ```powershell
 $Hive.SaveHeatingScheduleToFile('D:\Temp\') # Returns nothing. A file containing the current heating schedule defined in JSON format is saved to D:\Temp\HiveSchedule-20160423-2212.json
+$Hive.SaveHeatingScheduleToFile('FirstFloor', 'D:\Temp\') # Multi-zone
 ```
 
 ### Set heating schedule from a file
 Upload a heating schedule from a previously saved file. The method will parse the JSON structure to ensure it's valid and also check that there are 7 days worth of events in the schedule. It cannot however ensure that you are properly following all syntax. The best solution for creating your file is simply to set the schedule on the Hive website using the GUI and then use `$h.SaveHeatingScheduleToFile()` to save it. Repeat for all the profiles you want. If you want to edit the JSON, use any text editor but I recommend either Visual Studio Code or Notepad++ with the JSTool plugin.
 ```powershell
 $h.SetHeatingScheduleFromFile('D:\Temp\winter-schedule.json') # Returns "Schedule set successfully from D:\Temp\winter-schedule.json"
+$h.SetHeatingScheduleFromFile('FirstFloor', 'D:\Temp\winter-schedule.json') # Multi-zone
 ```
 
 ### Advance
 Just like the Hive site, this method advances the heating system to the next event in the schedule (for example if you want to turn the heating on (or off!) a little earlier than the schedule permits). The heating mode of the system MUST be schedule or the method returns an error.
 ```powershell
 $h.SetHeatingAdvance()
+$h.SetHeatingAdvance('FirstFloor') # Multi-zone
 <#
 "Advancing to 17.0°C
 Desired temperature 17°C set successfully."
 #>
+```
+
+### Change the hot water mode
+Takes a parameter of type `[HeatingMode]` `OFF` | `MANUAL` | `SCHEDULE`
+```powershell
+$h.SetHotWaterMode('OFF')
+$h.SetHotWaterMode('MANUAL')
+$h.SetHotWaterMode('SCHEDULE')
+# Returns "Hot water mode set to [mode] successfully."
+```
+
+### Boost the hot water for the defined time.
+Takes a parameter of type `[BoostTime]` `HALF` | `ONE` | `TWO` | `THREE` | `FOUR` | `FIVE` | `SIX` which is based on hours and converted to minutes before being submitted to the API. I haven't used an `[int]` type because the API does mention these values specifically so it's best to enforce their use.
+```powershell
+$h.SetHotWaterBoostMode('HALF')
+$h.SetHotWaterBoostMode('ONE')
+$h.SetHotWaterBoostMode('TWO')
+$h.SetHotWaterBoostMode('THREE')
+$h.SetHotWaterBoostMode('FOUR')
+$h.SetHotWaterBoostMode('FIVE')
+$h.SetHotWaterBoostMode('SIX')
+```
+
+### Cancel a currently active hot water boost
+If the current hot water mode is set to BOOST, turn it off. This reverts the system to its previous configuration using the `previousConfiguration` value stored for the hot water when BOOST was activated. ie. If it was OFF, it'll be returned to OFF.
+```powershell
+$h.CancelHotWaterBoostMode() # Returns "Hot water BOOST cancelled."
+```
+
+### Save hot water schedule to a file
+Save the currently defined hot water schedule to a file for editing.
+```powershell
+$Hive.SaveHotWaterScheduleToFile('D:\Temp\') # Returns nothing. A file containing the current hot water schedule defined in JSON format is saved to D:\Temp\HiveHotWaterSchedule-20160423-2212.json
+```
+
+### Set hot water schedule from a file
+Upload a hot water schedule from a previously saved file. The method will parse the JSON structure to ensure it's valid and also check that there are 7 days worth of events in the schedule. It cannot however ensure that you are properly following all syntax. The best solution for creating your file is simply to set the schedule on the Hive website using the GUI and then use `$h.SaveHotWaterScheduleToFile()` to save it. Repeat for all the profiles you want. If you want to edit the JSON, use any text editor but I recommend either Visual Studio Code or Notepad++ with the JSTool plugin.
+```powershell
+$h.SetHotWaterScheduleFromFile('D:\Temp\HiveHotWaterSchedule-20160423-2212.json') # Returns "Schedule set successfully from D:\Temp\HiveHotWaterSchedule-20160423-2212.json"
 ```
 
 ### Set Active Plug mode
