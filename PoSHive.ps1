@@ -32,7 +32,7 @@ Class Hive {
     [ValidateLength(4,100)][string] $Username
     [securestring] $Password
     [string] $ApiSessionId
-    hidden [string] $Agent = 'PoSHive 2.0.0 - github.com/lwsrbrts/PoSHive'
+    hidden [string] $Agent = 'PoSHive 2.1.0 - github.com/lwsrbrts/PoSHive'
     [psobject] $User
     [psobject] $Devices
     [psobject] $Products
@@ -205,7 +205,7 @@ Class Hive {
             $this.Products = $this.GetProducts()
             $this.Devices = $this.GetDevices()
 
-            If (($this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}).Count -is [int]) { $this.ReturnError('No heating zones matching the name provided: `"$ZoneName`" were found.') }
+            If (($this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}).Count -is [int]) { $this.ReturnError("No heating zones matching the name provided: `"$ZoneName`" were found.") }
             
             # Find out the correct node to send the command to. Only the first heating node returned.
             $HeatingNode = $this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}
@@ -237,7 +237,7 @@ Class Hive {
         If (($this.Products | Where-Object {$_.type -eq "heating"}).Count -is [int]) { $this.ReturnError('There is more than one product of type "heating". Please identify which heating zone by providing the zone name.') }
         
         # Find out the correct node to send the temp to. Only the first Thermostat we find!
-        $Thermostat = $this.Products | Where-Object {$_.type -eq "heating"} | Select -First 1
+        $Thermostat = $this.Products | Where-Object {$_.type -eq "heating"} | Select-Object -First 1
 
         $Settings = [psobject]@{
             mode = $Mode.ToString()
@@ -266,7 +266,7 @@ Class Hive {
         $this.Products = $this.GetProducts()
         $this.Devices = $this.GetDevices()
 
-        If (($this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}).Count -is [int]) { $this.ReturnError('No heating zones matching the name provided: `"$ZoneName`" were found.') }
+        If (($this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}).Count -is [int]) { $this.ReturnError("No heating zones matching the name provided: `"$ZoneName`" were found.") }
         
         # Find out the correct node to send the command to by using its name.
         $Thermostat = $this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}
@@ -303,7 +303,7 @@ Class Hive {
         If (($this.Products | Where-Object {$_.type -eq "heating"}).Count -is [int]) { $this.ReturnError('There is more than one product of type "heating". Please identify which heating zone by providing the zone name.') }
         
         # Find out the correct node to send the commands to.
-        $Thermostat = $this.Products | Where-Object {$_.type -eq "heating"} | Select -First 1
+        $Thermostat = $this.Products | Where-Object {$_.type -eq "heating"} | Select-Object -First 1
 
         # Check the heating is not in OFF state
         If ($Thermostat.state.mode -eq 'OFF') {
@@ -339,7 +339,7 @@ Class Hive {
         $this.Products = $this.GetProducts()
         $this.Devices = $this.GetDevices()
 
-        If (($this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}).Count -is [int]) { $this.ReturnError('No heating zones matching the name provided: `"$ZoneName`" were found.') }
+        If (($this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}).Count -is [int]) { $this.ReturnError("No heating zones matching the name provided: `"$ZoneName`" were found.") }
         
        # Find out the correct node to send the commands to.
         $Thermostat = $this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}
@@ -382,7 +382,7 @@ Class Hive {
         If (($this.Products | Where-Object {$_.type -eq "heating"}).Count -is [int]) { $this.ReturnError('There is more than one product of type "heating". Please identify which heating zone by providing the zone name.') }
         
         # Find out the correct node to send the commands to.
-        $Thermostat = $this.Products | Where-Object {$_.type -eq "heating"} | Select -First 1
+        $Thermostat = $this.Products | Where-Object {$_.type -eq "heating"} | Select-Object -First 1
 
         $ApiDuration = $null # Creating so it's there!
         $ApiTemperature = 22 # This is the same Boost default temp as the Hive site.
@@ -428,7 +428,7 @@ Class Hive {
         $this.Products = $this.GetProducts()
         $this.Devices = $this.GetDevices()
 
-        If (($this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}).Count -is [int]) { $this.ReturnError('No heating zones matching the name provided: `"$ZoneName`" were found.') }
+        If (($this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}).Count -is [int]) { $this.ReturnError("No heating zones matching the name provided: `"$ZoneName`" were found.") }
         
         # Find out the correct node to send the commands to.
         $Thermostat = $this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}
@@ -481,7 +481,7 @@ Class Hive {
         If (($this.Products | Where-Object {$_.type -eq "heating"}).Count -is [int]) { $this.ReturnError('There is more than one product of type "heating". Please identify which heating zone by providing the zone name.') }
         
         # Find out the correct node to send the commands to.
-        $Thermostat = $this.Products | Where-Object {$_.type -eq "heating"} | Select -First 1
+        $Thermostat = $this.Products | Where-Object {$_.type -eq "heating"} | Select-Object -First 1
 
         # If the system isn't set to BOOST, return without doing anything.
         If ($Thermostat.state.mode -ne 'BOOST') {
@@ -516,7 +516,7 @@ Class Hive {
         $this.Products = $this.GetProducts()
         $this.Devices = $this.GetDevices()
 
-        If (($this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}).Count -is [int]) { $this.ReturnError('No heating zones matching the name provided: `"$ZoneName`" were found.') }
+        If (($this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}).Count -is [int]) { $this.ReturnError("No heating zones matching the name provided: `"$ZoneName`" were found.") }
         
         # Find out the correct node to send the commands to.
         $Thermostat = $this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}
@@ -645,7 +645,7 @@ Class Hive {
         
         Try {
             $Response = Invoke-RestMethod -Method Get -Uri "https://weather-prod.bgchprod.info/weather?postcode=$Postcode&country=$Country"
-            Return $Response.weather | Select description, temperature
+            Return $Response.weather | Select-Object description, temperature
         }
         Catch {
             $this.ReturnError($_)
@@ -663,7 +663,7 @@ Class Hive {
         
         Try {
             $Response = Invoke-RestMethod -Method Get -Uri "https://weather-prod.bgchprod.info/weather?postcode=$Postcode&country=$CountryCode"
-            Return $Response.weather | Select description, temperature
+            Return $Response.weather | Select-Object description, temperature
         }
         Catch {
             $this.ReturnError($_)
@@ -696,7 +696,7 @@ Class Hive {
         If (($this.Products | Where-Object {$_.type -eq "heating"}).Count -is [int]) { $this.ReturnError('There is more than one product of type "heating". Please identify which heating zone by providing the zone name.') }
         
         # Find out the correct node to send the commands to.
-        $Thermostat = $this.Products | Where-Object {$_.type -eq "heating"} | Select -First 1
+        $Thermostat = $this.Products | Where-Object {$_.type -eq "heating"} | Select-Object -First 1
 
         # Create the correct json structure.
         $Settings = [psobject]@{
@@ -729,7 +729,7 @@ Class Hive {
         $this.Products = $this.GetProducts()
         $this.Devices = $this.GetDevices()
 
-        If (($this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}).Count -is [int]) { $this.ReturnError('No heating zones matching the name provided: `"$ZoneName`" were found.') }
+        If (($this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}).Count -is [int]) { $this.ReturnError("No heating zones matching the name provided: `"$ZoneName`" were found.") }
         
         # Find out the correct node to send the commands to.
         $Thermostat = $this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}
@@ -768,7 +768,7 @@ Class Hive {
         If (($this.Products | Where-Object {$_.type -eq "heating"}).Count -is [int]) { $this.ReturnError('There is more than one product of type "heating". Please identify which heating zone by providing the zone name.') }
         
         # Find out the correct node to send the commands to.
-        $Thermostat = $this.Products | Where-Object {$_.type -eq "heating"} | Select -First 1
+        $Thermostat = $this.Products | Where-Object {$_.type -eq "heating"} | Select-Object -First 1
 
         $Settings = $null
         
@@ -781,7 +781,7 @@ Class Hive {
         }
 
         # Seven days of events in the file?
-        If (((($Settings.schedule).psobject.Members | Where {$_.MemberType -eq 'NoteProperty'}).count) -eq 7) {
+        If (((($Settings.schedule).psobject.Members | Where-Object {$_.MemberType -eq 'NoteProperty'}).count) -eq 7) {
             Try {
                 $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/heating/$($Thermostat.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
                 Return "Schedule set successfully from $FilePath"
@@ -805,7 +805,7 @@ Class Hive {
         $this.Products = $this.GetProducts()
         $this.Devices = $this.GetDevices()
 
-        If (($this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}).Count -is [int]) { $this.ReturnError('No heating zones matching the name provided: `"$ZoneName`" were found.') }
+        If (($this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}).Count -is [int]) { $this.ReturnError("No heating zones matching the name provided: `"$ZoneName`" were found.") }
         
         # Find out the correct node to send the commands to.
         $Thermostat = $this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}
@@ -821,7 +821,7 @@ Class Hive {
         }
 
         # Seven days of events in the file?
-        If (((($Settings.schedule).psobject.Members | Where {$_.MemberType -eq 'NoteProperty'}).count) -eq 7) {
+        If (((($Settings.schedule).psobject.Members | Where-Object {$_.MemberType -eq 'NoteProperty'}).count) -eq 7) {
             Try {
                 $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/heating/$($Thermostat.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
                 Return "Schedule set successfully from $FilePath"
@@ -849,7 +849,7 @@ Class Hive {
         If (($this.Products | Where-Object {$_.type -eq "heating"}).Count -is [int]) { $this.ReturnError('There is more than one product of type "heating". Please identify which heating zone by providing the zone name.') }
         
         # Find out the correct node to send the temp to. Only the first Thermostat we find!
-        $Thermostat = $this.Products | Where-Object {$_.type -eq "heating"} | Select -First 1
+        $Thermostat = $this.Products | Where-Object {$_.type -eq "heating"} | Select-Object -First 1
 
         # Check the heating is in SCHEDULE mode.
         If (-not ($Thermostat.state.mode -eq 'SCHEDULE')) {
@@ -899,7 +899,7 @@ Class Hive {
         $this.Products = $this.GetProducts()
         $this.Devices = $this.GetDevices()
 
-        If (($this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}).Count -is [int]) { $this.ReturnError('No heating zones matching the name provided: `"$ZoneName`" were found.') }
+        If (($this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}).Count -is [int]) { $this.ReturnError("No heating zones matching the name provided: `"$ZoneName`" were found.") }
         
         # Find out the correct node to send the commands to.
         $Thermostat = $this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}
@@ -1095,7 +1095,7 @@ Class Hive {
         }
 
         # Seven days of events in the file?
-        If (((($Settings.schedule).psobject.Members | Where {$_.MemberType -eq 'NoteProperty'}).count) -eq 7) {
+        If (((($Settings.schedule).psobject.Members | Where-Object {$_.MemberType -eq 'NoteProperty'}).count) -eq 7) {
             Try {
                 $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/activeplug/$($ActivePlug.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
                 Return "$($ActivePlug.state.name) schedule set successfully from `"$FilePath`""
@@ -1168,7 +1168,7 @@ Class Hive {
         If (($this.Products | Where-Object {$_.type -eq "hotwater"}).Count -is [int]) { $this.ReturnError('There is no hot water device attached to this system.') }
         
         # Find out the correct node to send the commands to.
-        $HotWater = $this.Products | Where-Object {$_.type -eq "hotwater"} | Select -First 1
+        $HotWater = $this.Products | Where-Object {$_.type -eq "hotwater"} | Select-Object -First 1
 
         $Settings = [psobject]@{
             mode = $Mode.ToString()
@@ -1197,7 +1197,7 @@ Class Hive {
         If (($this.Products | Where-Object {$_.type -eq "hotwater"}).Count -is [int]) { $this.ReturnError('There is no hot water device attached to this system.') }
         
         # Find out the correct node to send the commands to.
-        $HotWater = $this.Products | Where-Object {$_.type -eq "hotwater"} | Select -First 1
+        $HotWater = $this.Products | Where-Object {$_.type -eq "hotwater"} | Select-Object -First 1
 
         $ApiDuration = $null # Creating so it's there!
 
@@ -1240,7 +1240,7 @@ Class Hive {
         If (($this.Products | Where-Object {$_.type -eq "hotwater"}).Count -is [int]) { $this.ReturnError('There is no hot water device attached to this system.') }
         
         # Find out the correct node to send the commands to.
-        $HotWater = $this.Products | Where-Object {$_.type -eq "hotwater"} | Select -First 1
+        $HotWater = $this.Products | Where-Object {$_.type -eq "hotwater"} | Select-Object -First 1
 
         # If the system isn't set to BOOST, return without doing anything.
         If ($HotWater.state.mode -ne 'BOOST') {
@@ -1271,7 +1271,7 @@ Class Hive {
         If (($this.Products | Where-Object {$_.type -eq "hotwater"}).Count -is [int]) { $this.ReturnError('There is no hot water device attached to this system.') }
         
         # Find out the correct node to send the commands to.
-        $HotWater = $this.Products | Where-Object {$_.type -eq "hotwater"} | Select -First 1
+        $HotWater = $this.Products | Where-Object {$_.type -eq "hotwater"} | Select-Object -First 1
 
         # Create the correct json structure.
         $Settings = [psobject]@{
@@ -1306,7 +1306,7 @@ Class Hive {
         If (($this.Products | Where-Object {$_.type -eq "hotwater"}).Count -is [int]) { $this.ReturnError('There is no hot water device attached to this system.') }
         
         # Find out the correct node to send the commands to.
-        $HotWater = $this.Products | Where-Object {$_.type -eq "hotwater"} | Select -First 1
+        $HotWater = $this.Products | Where-Object {$_.type -eq "hotwater"} | Select-Object -First 1
 
         $Settings = $null
         
@@ -1319,7 +1319,7 @@ Class Hive {
         }
 
         # Seven days of events in the file?
-        If (((($Settings.schedule).psobject.Members | Where {$_.MemberType -eq 'NoteProperty'}).count) -eq 7) {
+        If (((($Settings.schedule).psobject.Members | Where-Object {$_.MemberType -eq 'NoteProperty'}).count) -eq 7) {
             Try {
                 $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/hotwater/$($HotWater.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
                 Return "Schedule set successfully from $FilePath"
@@ -1331,6 +1331,123 @@ Class Hive {
         }
         Else {Return "The schedule in the file must contain entries for all seven days."}
     }
+
+    <#
+        Retrieves the status of a named motion sensor.
+    #>
+    [psobject] GetMotionSensorState([string] $SensorName, [bool] $IncludeTodaysEvents) {
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        Try {
+            $this.Products = $this.GetProducts()
+            $this.Devices = $this.GetDevices()
+
+            If (($this.Products | Where-Object {$_.type -eq "motionsensor" -and $_.state.name -eq $SensorName}).Count -is [int]) { $this.ReturnError("No motion sensor matching the name provided: `"$SensorName`" was found.") }
+            
+            # Find out the correct motion sensor node to obtain the state of.
+            $SensorNode = $this.Products | Where-Object {$_.type -eq "motionsensor" -and $_.state.name -eq $SensorName}
+
+            $Response = $null
+
+            If ($IncludeTodaysEvents) {
+                # Get the events from today - note this is from "products" not "nodes".
+                Try {
+                    $TodayStart = Get-Date -Hour 0 -Minute 0 -Second 0
+                    $TodayEnd = Get-Date -Hour 23 -Minute 59 -Second 59
+                    $Response = Invoke-RestMethod -Method Get -Uri "$($this.ApiUrl)/products/motionsensor/$($SensorNode.id)/events?from=$($this.DateTimeToUnixTimestamp($TodayStart))&to=$($this.DateTimeToUnixTimestamp($TodayEnd))" -Headers $this.Headers
+                }
+                Catch {
+                    $this.ReturnError($_)
+                    Return $null
+                }
+
+                # Convert the unix timestamps in the response to date time objects so they can be read easily.
+                for ($i=0; $i -le ($Response.Count - 1); $i++) {
+                    $Response[$i].start = $this.ConvertUnixTime($Response[$i].start)
+                    $Response[$i].end = $this.ConvertUnixTime($Response[$i].end)
+                }
+            }
+            If ($IncludeTodaysEvents) {
+                $MotionSensor = [ordered]@{
+                    Online = $SensorNode.props.online
+                    MotionDetected = $SensorNode.props.motion.status
+                    StartTime = $this.ConvertUnixTime($SensorNode.props.motion.start)
+                    EndTime = $this.ConvertUnixTime($SensorNode.props.motion.end)
+                    LatestEvent = $Response | Sort-Object -Descending -Property start | Select-Object -First 1
+                    TodaysEvents = $Response
+                }
+            }
+            Else {
+                $MotionSensor = [ordered]@{
+                    Online = $SensorNode.props.online
+                    MotionDetected = $SensorNode.props.motion.status
+                    StartTime = $this.ConvertUnixTime($SensorNode.props.motion.start)
+                    EndTime = $this.ConvertUnixTime($SensorNode.props.motion.end)
+                }
+            }
+
+            Return $MotionSensor
+        }
+        Catch {
+            $this.ReturnError($_)
+            Return $null
+        }
+    }
+
+    <#
+        Retrieves the status of a named contact (window/door) sensor and its event history.
+    #>
+    [psobject] GetContactSensorState([string] $SensorName, [bool] $IncludeTodaysEvents) {
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        Try {
+            $this.Products = $this.GetProducts()
+            $this.Devices = $this.GetDevices()
+
+            If (($this.Products | Where-Object {$_.type -eq "contactsensor" -and $_.state.name -eq $SensorName}).Count -is [int]) { $this.ReturnError("No contact sensor matching the name provided: `"$SensorName`" was found.") }
+            
+            # Find out the correct contact sensor node to obtain the state of.
+            $SensorNode = $this.Products | Where-Object {$_.type -eq "contactsensor" -and $_.state.name -eq $SensorName}
+
+            $Response = $null # Declare variable
+
+            If ($IncludeTodaysEvents) {
+                # Get the events from today - this is the first time we're getting the history of something - note this is from "products" not "nodes".
+                Try {
+                    $TodayStart = Get-Date -Hour 0 -Minute 0 -Second 0
+                    $TodayEnd = Get-Date -Hour 23 -Minute 59 -Second 59
+                    $Response = Invoke-RestMethod -Method Get -Uri "$($this.ApiUrl)/products/contactsensor/$($SensorNode.id)/events?from=$($this.DateTimeToUnixTimestamp($TodayStart))&to=$($this.DateTimeToUnixTimestamp($TodayEnd))" -Headers $this.Headers
+                }
+                Catch {
+                    $this.ReturnError($_)
+                    Return $null
+                }
+
+                # Convert the unix timestamps in the response to date time objects so they can be read easily.
+                for ($i=0; $i -le ($Response.Count - 1); $i++) {
+                    $Response[$i].start = $this.ConvertUnixTime($Response[$i].start)
+                    $Response[$i].end = $this.ConvertUnixTime($Response[$i].end)
+                }
+            }
+            If ($IncludeTodaysEvents) {
+                $ContactSensor = [ordered]@{
+                    SensorStatus = $SensorNode.props.status
+                    LatestEvent = $Response | Sort-Object -Descending -Property start | Select-Object -First 1
+                    TodaysEvents = $Response
+                }
+            }
+            Else {
+                $ContactSensor = [ordered]@{
+                    SensorStatus = $SensorNode.props.status
+                }
+            }
+
+            Return $ContactSensor
+        }
+        Catch {
+            $this.ReturnError($_)
+            Return $null
+        }
+    }
+
     
 # END HIVE CLASS
 }    

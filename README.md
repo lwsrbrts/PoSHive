@@ -1,5 +1,5 @@
 # PoSHive
-A PowerShell 5 class to control your British Gas Hive system including heating, multi-zone, hot water & active plugs.
+A PowerShell 5 class to control your British Gas Hive system including heating, multi-zone, hot water, active plugs and sensors.
 
 > **This project is not sanctioned by or affiliated with British Gas in any way.**
 
@@ -14,6 +14,7 @@ Or [download from the releases](https://github.com/lwsrbrts/PoSHive/releases) pa
 
 
 ## Release Notes
+ * [**2.1.0 - Sensing**](https://github.com/lwsrbrts/PoSHive/releases/tag/v2.1.0) - 04/08/2017 - Sensor support for both motion and contact sensors. Since there's no activities, these are just Get operations.
  * [**2.0.0 - Hot zone**](https://github.com/lwsrbrts/PoSHive/releases/tag/v2.0.0) - 01/08/2017 - Finally added multi-zone and hot water support to the class!
  * [**1.4.0 - Beekeeper**](https://github.com/lwsrbrts/PoSHive/releases/tag/v1.4.0) - 01/06/2017 - Updated to the new Beekeeper API that is used on the Hive website. With Hive going global (US) the endpoint may change per country so I've set the API endpoint from the returned data after login, just like the site. Added support for Active Plugs.
  * [**1.3.1 - Someday**](https://github.com/lwsrbrts/PoSHive/releases/tag/v1.3.1) - 27/04/2016 - Bugfix. Issue preventing GetHolidayMode() method from returning a result.
@@ -26,13 +27,11 @@ Or [download from the releases](https://github.com/lwsrbrts/PoSHive/releases) pa
 
 ## Purpose
 The purpose of this class is to enable you to use PowerShell (v5) scripting to exert more powerful logic control over the state of your Hive system.
-The class allows you to set most if not all of the same functionality as provided by the Hive website for your Hive system; including Heating and hot water Mode, Boost, Schedules and Holiday Schedule. Additionally, it allows you to more easily expose information about the system and its settings to enable you to perform powerful logic operations. If you find a bug or have a feature request, please open a new issue or let me know so I can resolve it.
+The class allows you to set most if not all of the same functionality as provided by the Hive website for your Hive system; including control of Heating, Multi-zone Heating, Hot Water, Active Plugs, Sensors, Schedules for each, as well as Holiday mode. Additionally, it allows you to more easily expose information about the system and its settings to enable you to perform powerful logic operations. If you find a bug or have a feature request, please open a new issue or let me know so I can resolve it.
 
 ## What can't it do?
 There's no support for:
  * Active Lights
- * Sensors
-
 
 ## Examples
 Some examples of use (and the reasons why I did this)
@@ -82,42 +81,50 @@ $h | Get-Member
 <# Returns eg.
    TypeName: Hive
 
-Name                       MemberType Definition
-----                       ---------- ----------
-   TypeName: Hive
-
-Name                       MemberType Definition
-----                       ---------- ----------
-CancelBoostMode            Method     string CancelBoostMode()
-CancelHolidayMode          Method     string CancelHolidayMode()
-Equals                     Method     bool Equals(System.Object obj)
-GetDevices                 Method     psobject GetDevices()
-GetHashCode                Method     int GetHashCode()
-GetHolidayMode             Method     string GetHolidayMode()
-GetProducts                Method     psobject GetProducts()
-GetTemperature             Method     psobject GetTemperature(bool FormattedValue)
-GetType                    Method     type GetType()
-GetWeather                 Method     psobject GetWeather(), psobject GetWeather(string Postcode, string CountryCode)
-GetWeatherTemperature      Method     int GetWeatherTemperature()
-Login                      Method     void Login()
-Logout                     Method     psobject Logout()
-SaveHeatingScheduleToFile  Method     void SaveHeatingScheduleToFile(System.IO.DirectoryInfo DirectoryPath)
-SetActivePlugMode          Method     string SetActivePlugMode(ActivePlugMode Mode, string Name)
-SetActivePlugState         Method     string SetActivePlugState(bool State, string Name)
-SetBoostMode               Method     psobject SetBoostMode(BoostTime Duration)
-SetHeatingAdvance          Method     string SetHeatingAdvance()
-SetHeatingMode             Method     psobject SetHeatingMode(HeatingMode Mode)
-SetHeatingScheduleFromFile Method     string SetHeatingScheduleFromFile(System.IO.FileInfo FilePath)
-SetHolidayMode             Method     string SetHolidayMode(datetime StartDateTime, datetime EndDateTime, int Temperature
-SetTemperature             Method     psobject SetTemperature(double targetTemperature)
-ToString                   Method     string ToString()
-ApiSessionId               Property   string ApiSessionId {get;set;}
-ApiUrl                     Property   uri ApiUrl {get;set;}
-Devices                    Property   psobject Devices {get;set;}
-Password                   Property   string Password {get;set;}
-Products                   Property   psobject Products {get;set;}
-User                       Property   psobject User {get;set;}
-Username                   Property   string Username {get;set;}
+Name                          MemberType   Definition
+----                          ----------   ----------
+CancelBoostMode               Method       string CancelBoostMode(), string CancelBoostMode(string ZoneName)
+CancelHolidayMode             Method       string CancelHolidayMode()
+CancelHotWaterBoostMode       Method       string CancelHotWaterBoostMode()
+ConvertUnixTime               Method       datetime ConvertUnixTime(long Milliseconds)
+DateTimeToUnixTimestamp       Method       long DateTimeToUnixTimestamp(datetime dateTime)
+DecryptSecureString           Method       string DecryptSecureString(securestring SecureString)
+GetActivePlug                 Method       psobject GetActivePlug(string Name)
+GetActivePlugPowerConsumption Method       int GetActivePlugPowerConsumption(string Name)
+GetActivePlugState            Method       bool GetActivePlugState(string Name)
+GetDevices                    Method       psobject GetDevices()
+GetHolidayMode                Method       string GetHolidayMode()
+GetProducts                   Method       psobject GetProducts()
+GetTemperature                Method       psobject GetTemperature(bool FormattedValue), psobject GetTemperature(string ZoneName, bool FormattedValue)
+GetWeather                    Method       psobject GetWeather(), psobject GetWeather(string Postcode, string CountryCode)
+GetWeatherTemperature         Method       int GetWeatherTemperature()
+Login                         Method       void Login()
+Logout                        Method       psobject Logout()
+ReturnError                   Method       void ReturnError(string e)
+SaveActivePlugScheduleToFile  Method       void SaveActivePlugScheduleToFile(System.IO.DirectoryInfo DirectoryPath, string Name)
+SaveHeatingScheduleToFile     Method       void SaveHeatingScheduleToFile(System.IO.DirectoryInfo DirectoryPath), void SaveHeatingScheduleToFile(string ZoneName, System.IO.DirectoryInfo DirectoryPath)
+SaveHotWaterScheduleToFile    Method       void SaveHotWaterScheduleToFile(System.IO.DirectoryInfo DirectoryPath)
+SetActivePlugMode             Method       string SetActivePlugMode(ActivePlugMode Mode, string Name)
+SetActivePlugScheduleFromFile Method       string SetActivePlugScheduleFromFile(System.IO.FileInfo FilePath, string Name)
+SetActivePlugState            Method       string SetActivePlugState(bool State, string Name)
+SetBoostMode                  Method       psobject SetBoostMode(BoostTime Duration), psobject SetBoostMode(string ZoneName, BoostTime Duration)
+SetHeatingAdvance             Method       string SetHeatingAdvance(), string SetHeatingAdvance(string ZoneName)
+SetHeatingMode                Method       psobject SetHeatingMode(HeatingMode Mode), psobject SetHeatingMode(string ZoneName, HeatingMode Mode)
+SetHeatingScheduleFromFile    Method       string SetHeatingScheduleFromFile(System.IO.FileInfo FilePath), string SetHeatingScheduleFromFile(string ZoneName, System.IO.FileInfo FilePath)
+SetHolidayMode                Method       string SetHolidayMode(datetime StartDateTime, datetime EndDateTime, int Temperature)
+SetHotWaterBoostMode          Method       psobject SetHotWaterBoostMode(BoostTime Duration)
+SetHotWaterMode               Method       psobject SetHotWaterMode(HeatingMode Mode)
+SetHotWaterScheduleFromFile   Method       string SetHotWaterScheduleFromFile(System.IO.FileInfo FilePath)
+SetTemperature                Method       psobject SetTemperature(double targetTemperature), psobject SetTemperature(string ZoneName, double targetTemperature)
+Agent                         Property     string Agent {get;set;}
+ApiSessionId                  Property     string ApiSessionId {get;set;}
+ApiUrl                        Property     uri ApiUrl {get;set;}
+Devices                       Property     psobject Devices {get;set;}
+Headers                       Property     hashtable Headers {get;set;}
+Password                      Property     securestring Password {get;set;}
+Products                      Property     psobject Products {get;set;}
+User                          Property     psobject User {get;set;}
+Username                      Property     string Username {get;set;}
 #>
 ```
 
@@ -332,6 +339,22 @@ This is handy for monitoring usage. For example, an auto-sensing clothes dryer t
 _This methos is of particular interest to me since I have an auto-sensing dryer which, once it has finished the drying cycle, continues to make an annoying beeping noise every 30 seconds until you open the door or turn it off, meaning it can't be used before going to bed._
 ```powershell
 $h.GetActivePlugPowerConsumption('Plug 1') # Returns eg. "33"
+```
+
+### Get the state of a motion sensor
+Gets the current state of a named motion sensor including, if desired, the latest event and today's events.
+
+```powershell
+$h.GetMotionSensorState('Motion Sensor 1', $true) # Returns a psobject with sensor state and today's history events.
+$h.GetMotionSensorState('Motion Sensor 1', $false) # Returns a psobject with sensor state only.
+```
+
+### Get the state of a contact (window/door) sensor
+Gets the current state of a named contact sensor including, if desired, the latest event and today's events.
+
+```powershell
+$h.GetContactSensorState('Win/Door Sensor 1', $true) # Returns a psobject with sensor state and today's history events.
+$h.GetContactSensorState('Win/Door Sensor 1', $true) # Returns a psobject with sensor state only.
 ```
 
 ### Log out
