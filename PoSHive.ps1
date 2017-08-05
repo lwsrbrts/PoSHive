@@ -32,7 +32,7 @@ Class Hive {
     [ValidateLength(4,100)][string] $Username
     [securestring] $Password
     [string] $ApiSessionId
-    hidden [string] $Agent = 'PoSHive 2.1.0 - github.com/lwsrbrts/PoSHive'
+    hidden [string] $Agent = 'PoSHive 2.1.1 - github.com/lwsrbrts/PoSHive'
     [psobject] $User
     [psobject] $Devices
     [psobject] $Products
@@ -115,17 +115,26 @@ Class Hive {
     [psobject] Logout() {
         If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
         Try {
-            $Response = Invoke-RestMethod -Method Delete -Uri "$($this.ApiUrl)/auth/logout" -Headers $this.Headers
-            # Needs some error checking.
+            $Response = Invoke-RestMethod -Method Delete -Uri "$($this.ApiUrl)/auth/logout" -Headers $this.Headers -ErrorAction Stop
+            Write-Output "Logged out successfully."
+        }
+        Catch [System.Net.WebException] {
+            If ($_.Exception.Response.StatusCode.value__ -eq 401) {
+                Write-Output "Your session was not found on the remote server so your local session was reset."
+            }
+            Else { Write-Output "An error occurred when communicating with the remote server. Your session was reset." }
+            Return $_.Exception.Message
+        }
+        Catch {
+            Write-Output "An error occurred when communicating with the remote server. Your session was reset."
+            Return $_.Exception.Message
+        }
+        Finally {
             $this.ApiSessionId = $null
             $this.Headers.Remove('Authorization')
             $this.ApiUrl = "https://beekeeper.hivehome.com/1.0/global/login" # Reset the login URL.
-            Return "Logged out successfully."
         }
-        Catch {
-            $this.ReturnError($_)
-            Return $null
-        }
+        Return $null
     }
 
     <#
