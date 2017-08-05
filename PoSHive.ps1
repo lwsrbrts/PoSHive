@@ -120,14 +120,14 @@ Class Hive {
         }
         Catch [System.Net.WebException] {
             If ($_.Exception.Response.StatusCode.value__ -eq 401) {
-                Write-Output "Your session was not found on the remote server so your local session was reset."
+                $Message = "Your session was not found on the remote server but your local session was reset.`n$($_.Exception.Message)"
             }
-            Else { Write-Output "An error occurred when communicating with the remote server. Your session was reset." }
-            Return $_.Exception.Message
+            Else { $Message = "An error occurred when communicating with the remote server. Your session was reset.`n$($_.Exception.Message)" }
+            Return $Message 
         }
         Catch {
-            Write-Output "An error occurred when communicating with the remote server. Your session was reset."
-            Return $_.Exception.Message
+            $Message = "An error occurred when communicating with the remote server. Your session was reset.`n$($_.Exception.Message)"
+            Return $Message
         }
         Finally {
             $this.ApiSessionId = $null
