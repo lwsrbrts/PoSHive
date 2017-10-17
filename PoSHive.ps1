@@ -334,7 +334,7 @@ Class Hive {
     }
 
     <#
-        Sets the temperature value on the first thermostat device in the system.
+        Sets the temperature value on the named thermostat device in the system.
         $this.Products and $this.Devices is always refreshed prior to execution.
     #>
     [psobject] SetTemperature([string] $ZoneName, [double] $targetTemperature) {
@@ -803,7 +803,7 @@ Class Hive {
     }
 
     <#
-        Set a heating zone schedule from a saved schedule file.
+        Set a named heating zone schedule from a saved schedule file.
     #>
     [string] SetHeatingScheduleFromFile([string] $ZoneName, [System.IO.FileInfo] $FilePath) {
         If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
