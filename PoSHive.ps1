@@ -32,7 +32,7 @@ Class Hive {
     [ValidateLength(4,100)][string] $Username
     [securestring] $Password
     [string] $ApiSessionId
-    hidden [string] $Agent = 'PoSHive 2.1.2 - github.com/lwsrbrts/PoSHive'
+    hidden [string] $Agent = 'PoSHive 2.1.3 - github.com-lwsrbrts-PoSHive'
     [psobject] $User
     [psobject] $Devices
     [psobject] $Products
