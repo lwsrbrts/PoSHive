@@ -29,7 +29,7 @@ Class Hive {
     ##############
 
     [uri]$ApiUrl = "https://beekeeper.hivehome.com/1.0/global/login" # This is the global login URL - changes after login.
-    [ValidateLength(4,100)][string] $Username
+    [ValidateLength(4, 100)][string] $Username
     [securestring] $Password
     [string] $ApiSessionId
     hidden [string] $Agent = 'PoSHive 2.1.3 - github.com-lwsrbrts-PoSHive'
@@ -37,8 +37,8 @@ Class Hive {
     [psobject] $Devices
     [psobject] $Products
     hidden [hashtable] $Headers = @{
-        'Accept' = '*/*'
-        'User-Agent' = $this.Agent
+        'Accept'       = '*/*'
+        'User-Agent'   = $this.Agent
         'Content-Type' = 'application/json'
     }
     
@@ -93,7 +93,7 @@ Class Hive {
         $Settings = [psobject]@{
             username = $this.Username
             password = ($this.DecryptSecureString($this.Password))
-            devices = $true
+            devices  = $true
             products = $true
         }
 
@@ -250,7 +250,7 @@ Class Hive {
         $Settings = [psobject]@{
             mode = $Mode.ToString()
         }
-        If ($Mode -eq 'MANUAL') { $Settings.Add('target',20) }
+        If ($Mode -eq 'MANUAL') { $Settings.Add('target', 20) }
 
         Try {
             $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/heating/$($Thermostat.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
@@ -282,7 +282,7 @@ Class Hive {
         $Settings = [psobject]@{
             mode = $Mode.ToString()
         }
-        If ($Mode -eq 'MANUAL') { $Settings.Add('target',20) }
+        If ($Mode -eq 'MANUAL') { $Settings.Add('target', 20) }
 
         Try {
             $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/heating/$($Thermostat.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
@@ -302,7 +302,7 @@ Class Hive {
         If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
         
         # Get a sensible temp from the input value rounded to nearest half degree
-        $Temp = ([Math]::Round(($targetTemperature * 2), [System.MidpointRounding]::AwayFromZero)/2)
+        $Temp = ([Math]::Round(($targetTemperature * 2), [System.MidpointRounding]::AwayFromZero) / 2)
 
         # Update nodes
         $this.Products = $this.GetProducts()
@@ -341,7 +341,7 @@ Class Hive {
         If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
         
         # Get a sensible temp from the input value rounded to nearest half degree
-        $Temp = ([Math]::Round(($targetTemperature * 2), [System.MidpointRounding]::AwayFromZero)/2)
+        $Temp = ([Math]::Round(($targetTemperature * 2), [System.MidpointRounding]::AwayFromZero) / 2)
 
         # Update nodes
         $this.Products = $this.GetProducts()
@@ -349,7 +349,7 @@ Class Hive {
 
         If (($this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}).Count -is [int]) { $this.ReturnError("No heating zones matching the name provided: `"$ZoneName`" were found.") }
         
-       # Find out the correct node to send the commands to.
+        # Find out the correct node to send the commands to.
         $Thermostat = $this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}
 
         # Check the heating is not in OFF state
@@ -407,8 +407,8 @@ Class Hive {
 
         # JSON structure in a PSObject
         $Settings = [psobject]@{
-            mode = 'BOOST'
-            boost = $ApiDuration
+            mode   = 'BOOST'
+            boost  = $ApiDuration
             target = $ApiTemperature
         }
 
@@ -456,8 +456,8 @@ Class Hive {
 
         # JSON structure in a PSObject
         $Settings = [psobject]@{
-            mode = 'BOOST'
-            boost = $ApiDuration
+            mode   = 'BOOST'
+            boost  = $ApiDuration
             target = $ApiTemperature
         }
 
@@ -613,8 +613,8 @@ Class Hive {
 
         $Settings = [psobject]@{
             temperature = $Temperature
-            start = $this.DateTimeToUnixTimestamp($StartDateUTC)
-            end = $this.DateTimeToUnixTimestamp($EndDateUTC)
+            start       = $this.DateTimeToUnixTimestamp($StartDateUTC)
+            end         = $this.DateTimeToUnixTimestamp($EndDateUTC)
         }
 
         Try {
@@ -979,13 +979,15 @@ Class Hive {
         $Settings = $null
 
         Switch ($ActivePlug.state.mode) {
-           {($_ -eq "MANUAL") -and ($Mode -eq 'MANUAL') } { Return "`"$Name`" is already in MANUAL." }
-           {($_ -eq "SCHEDULE") -and ($Mode -eq 'SCHEDULE') } { Return "`"$Name`" is already in SCHEDULE." }
+            {($_ -eq "MANUAL") -and ($Mode -eq 'MANUAL') } { Return "`"$Name`" is already in MANUAL." }
+            {($_ -eq "SCHEDULE") -and ($Mode -eq 'SCHEDULE') } { Return "`"$Name`" is already in SCHEDULE." }
         }
 
         Switch ($Mode) {
-            'MANUAL' { $Settings = [psobject]@{mode = "MANUAL"} }
-            'SCHEDULE' { $Settings = [psobject]@{mode = "SCHEDULE"} }
+            'MANUAL' { $Settings = [psobject]@{mode = "MANUAL"} 
+            }
+            'SCHEDULE' { $Settings = [psobject]@{mode = "SCHEDULE"} 
+            }
         }
 
         Try {
@@ -1018,13 +1020,15 @@ Class Hive {
         $Settings = $null
 
         Switch ($ActivePlug.state.status) {
-           {($_ -eq "ON") -and ($State -eq $true) } { Return "`"$Name`" is already ON." }
-           {($_ -eq "OFF") -and ($State -eq $false) } { Return "`"$Name`" is already OFF." }
+            {($_ -eq "ON") -and ($State -eq $true) } { Return "`"$Name`" is already ON." }
+            {($_ -eq "OFF") -and ($State -eq $false) } { Return "`"$Name`" is already OFF." }
         }
 
         Switch ($State) {
-            $true { $Settings = [psobject]@{status = "ON"} }
-            $false { $Settings = [psobject]@{status = "OFF"} }
+            $true { $Settings = [psobject]@{status = "ON"} 
+            }
+            $false { $Settings = [psobject]@{status = "OFF"} 
+            }
         }
 
         Try {
@@ -1156,9 +1160,9 @@ Class Hive {
         $State = $null
 
         Switch ($ActivePlug.state.status) {
-           {($_ -eq "ON") } { $State = $true }
-           {($_ -eq "OFF") } { $State = $false }
-           Default { $State = $null }
+            {($_ -eq "ON") } { $State = $true }
+            {($_ -eq "OFF") } { $State = $false }
+            Default { $State = $null }
         }
         Return $State
     }
@@ -1221,7 +1225,7 @@ Class Hive {
 
         # JSON structure in a PSObject
         $Settings = [psobject]@{
-            mode = 'BOOST'
+            mode  = 'BOOST'
             boost = $ApiDuration
         }
 
@@ -1369,27 +1373,27 @@ Class Hive {
                 }
 
                 # Convert the unix timestamps in the response to date time objects so they can be read easily.
-                for ($i=0; $i -le ($Response.Count - 1); $i++) {
+                for ($i = 0; $i -le ($Response.Count - 1); $i++) {
                     $Response[$i].start = $this.ConvertUnixTime($Response[$i].start)
                     $Response[$i].end = $this.ConvertUnixTime($Response[$i].end)
                 }
             }
             If ($IncludeTodaysEvents) {
                 $MotionSensor = [ordered]@{
-                    Online = $SensorNode.props.online
+                    Online         = $SensorNode.props.online
                     MotionDetected = $SensorNode.props.motion.status
-                    StartTime = $this.ConvertUnixTime($SensorNode.props.motion.start)
-                    EndTime = $this.ConvertUnixTime($SensorNode.props.motion.end)
-                    LatestEvent = $Response | Sort-Object -Descending -Property start | Select-Object -First 1
-                    TodaysEvents = $Response
+                    StartTime      = $this.ConvertUnixTime($SensorNode.props.motion.start)
+                    EndTime        = $this.ConvertUnixTime($SensorNode.props.motion.end)
+                    LatestEvent    = $Response | Sort-Object -Descending -Property start | Select-Object -First 1
+                    TodaysEvents   = $Response
                 }
             }
             Else {
                 $MotionSensor = [ordered]@{
-                    Online = $SensorNode.props.online
+                    Online         = $SensorNode.props.online
                     MotionDetected = $SensorNode.props.motion.status
-                    StartTime = $this.ConvertUnixTime($SensorNode.props.motion.start)
-                    EndTime = $this.ConvertUnixTime($SensorNode.props.motion.end)
+                    StartTime      = $this.ConvertUnixTime($SensorNode.props.motion.start)
+                    EndTime        = $this.ConvertUnixTime($SensorNode.props.motion.end)
                 }
             }
 
@@ -1430,7 +1434,7 @@ Class Hive {
                 }
 
                 # Convert the unix timestamps in the response to date time objects so they can be read easily.
-                for ($i=0; $i -le ($Response.Count - 1); $i++) {
+                for ($i = 0; $i -le ($Response.Count - 1); $i++) {
                     $Response[$i].start = $this.ConvertUnixTime($Response[$i].start)
                     $Response[$i].end = $this.ConvertUnixTime($Response[$i].end)
                 }
@@ -1438,7 +1442,7 @@ Class Hive {
             If ($IncludeTodaysEvents) {
                 $ContactSensor = [ordered]@{
                     SensorStatus = $SensorNode.props.status
-                    LatestEvent = $Response | Sort-Object -Descending -Property start | Select-Object -First 1
+                    LatestEvent  = $Response | Sort-Object -Descending -Property start | Select-Object -First 1
                     TodaysEvents = $Response
                 }
             }
@@ -1456,6 +1460,76 @@ Class Hive {
         }
     }
 
+    <#
+        Gets heating history of a zone for up to 120 days in the past. Returns only the daily average.
+        During tests, no data older than 128 days was available so the limit is set at 120 in the class and errors on purpose.
+    #>
+    [psobject] GetHeatingHistory([datetime] $StartDate, [datetime] $EndDate, [string] $ZoneName) {
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If ($EndDate -gt (Get-Date)) {$this.ReturnError("The end date provided cannot be in the future.")}
+        If ($StartDate -lt ((Get-Date).AddDays(-120))) {$this.ReturnError("The start date provided cannot be older than 120 days.")}
+
+        Try {
+            $this.Products = $this.GetProducts()
+            $this.Devices = $this.GetDevices()
+
+            If (($this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}).Count -is [int]) { $this.ReturnError("No heating zones matching the name provided: `"$ZoneName`" were found.") }
+            
+            # Find out the correct node to obtain the history for.
+            $HeatingNode = $this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}
+
+            Try {
+                $Response = Invoke-RestMethod -Method Get -Uri "$($this.ApiUrl)/history/heating/$($HeatingNode.id)?start=$($this.DateTimeToUnixTimestamp($StartDate))&end=$($this.DateTimeToUnixTimestamp($EndDate))&timeUnit=DAYS&rate=1&operation=AVG" -Headers $this.Headers
+            }
+            Catch {
+                $this.ReturnError($_)
+                Return $null
+            }
+
+            $HistoryData = $Response.data
+
+            # Convert the unix timestamps in the response to date time objects so they can be read easily.
+            for ($i = 0; $i -le ($HistoryData.Count - 1); $i++) {
+                $HistoryData[$i].date = $this.ConvertUnixTime($HistoryData[$i].date)
+                $HistoryData[$i].temperature = [Math]::Round(($HistoryData[$i].temperature), 2)
+            }
+
+            Return $HistoryData
+
+        }
+        Catch {
+            $this.ReturnError($_)
+            Return $null
+        }
+    }
+
+    <#
+        Get the current state of the heating. This method does not obtain a property from a device or product, 
+        it only works out the logical state of the heating system based on current temperature and target.
+        It returns a boolean true if heating, false if not. 
+        This method is useful for tracking when your system is heating and when it isn't but it requires an API
+        call to do so.
+        I STRONGLY recommend that you do not run this 24/7.
+    #>
+    [bool] GetHeatingState([string] $ZoneName) {
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+
+        # Update nodes data
+        $this.Products = $this.GetProducts()
+        $this.Devices = $this.GetDevices()
+
+        If (($this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}).Count -is [int]) { $this.ReturnError("No heating zones matching the name provided: `"$ZoneName`" were found.") }
+        
+        # Find out the correct node to send the commands to.
+        $Thermostat = $this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}
+
+        If ($Thermostat.props.temperature -lt $Thermostat.state.target) {
+            Return $true
+        }
+        Else {Return $false}
+    }
+
+
     
-# END HIVE CLASS
+    # END HIVE CLASS
 }    
