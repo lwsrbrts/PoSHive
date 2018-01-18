@@ -32,7 +32,7 @@ Class Hive {
     [ValidateLength(4, 100)][string] $Username
     [securestring] $Password
     [string] $ApiSessionId
-    hidden [string] $Agent = 'PoSHive 2.1.4 - github.com-lwsrbrts-PoSHive'
+    hidden [string] $Agent = 'PoSHive 2.2.0 - github.com-lwsrbrts-PoSHive'
     [psobject] $User
     [psobject] $Devices
     [psobject] $Products
@@ -1502,6 +1502,81 @@ Class Hive {
             Return $null
         }
     }
+
+    <#
+        Gets heating history of a zone for up to 120 days in the past and creates a column chart in HTML.
+        Note, this method creates a file as output in the specified directory. You must open the file in a browser
+        to actually see the chart data.
+        The HTML and JS is minified to reduce size and allow it to be stored as a template within the class.
+    #>
+    [psobject] GetHeatingHistory([datetime] $StartDate, [datetime] $EndDate, [string] $ZoneName, [System.IO.DirectoryInfo] $DirectoryPath) {
+        If (-not $DirectoryPath.Exists) {$this.ReturnError("The path should already exist.")}
+        Try {
+            $HistoryData = $this.GetHeatingHistory($StartDate, $EndDate, $ZoneName)
+        }
+        Catch {
+            $this.ReturnError($_)
+            Return $null
+        }
+
+        Try {
+            [hashtable] $ColourTemps = @{
+                t5  = [System.Drawing.Color]::FromArgb(80, 181, 221)
+                t6  = [System.Drawing.Color]::FromArgb(78, 178, 206)
+                t7  = [System.Drawing.Color]::FromArgb(76, 176, 190)
+                t8  = [System.Drawing.Color]::FromArgb(73, 173, 175)
+                t9  = [System.Drawing.Color]::FromArgb(72, 171, 159)
+                t10 = [System.Drawing.Color]::FromArgb(70, 168, 142)
+                t11 = [System.Drawing.Color]::FromArgb(68, 166, 125)
+                t12 = [System.Drawing.Color]::FromArgb(66, 164, 108)
+                t13 = [System.Drawing.Color]::FromArgb(102, 173, 94)
+                t14 = [System.Drawing.Color]::FromArgb(135, 190, 64)
+                t15 = [System.Drawing.Color]::FromArgb(179, 204, 26)
+                t16 = [System.Drawing.Color]::FromArgb(214, 213, 28)
+                t17 = [System.Drawing.Color]::FromArgb(249, 202, 3)
+                t18 = [System.Drawing.Color]::FromArgb(246, 181, 3)
+                t19 = [System.Drawing.Color]::FromArgb(244, 150, 26)
+                t20 = [System.Drawing.Color]::FromArgb(236, 110, 5)
+                t21 = [System.Drawing.Color]::FromArgb(234, 90, 36)
+                t22 = [System.Drawing.Color]::FromArgb(228, 87, 43)
+                t23 = [System.Drawing.Color]::FromArgb(225, 74, 41)
+                t24 = [System.Drawing.Color]::FromArgb(224, 65, 39)
+                t25 = [System.Drawing.Color]::FromArgb(217, 55, 43)
+                t26 = [System.Drawing.Color]::FromArgb(214, 49, 41)
+                t27 = [System.Drawing.Color]::FromArgb(209, 43, 43)
+                t28 = [System.Drawing.Color]::FromArgb(205, 40, 47)
+                t29 = [System.Drawing.Color]::FromArgb(200, 36, 50)
+                t30 = [System.Drawing.Color]::FromArgb(195, 35, 52)
+            }
+
+            # Format the data suitable for Google Charts output
+            $String = @{}
+            $String = foreach ($Entry in $HistoryData) {
+                $RGB = $ColourTemps.Get_Item("t$([Math]::Floor($Entry.temperature))")
+                "[new Date($($Entry.date.Year),$($Entry.date.Month - 1) , $($Entry.date.Day)), $($Entry.temperature),'color: rgb($($RGB.R),$($RGB.G),$($RGB.B))'],"
+            }
+            $String[$String.Count - 1] = $String[$String.Count - 1].TrimEnd(',')
+
+            $MinifiedChartCode = @"
+<html><head><link href="https://fonts.googleapis.com/css?family=Roboto" rel="stylesheet"><script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script><script type="text/javascript">function drawChart(){var t=new google.visualization.DataTable;t.addColumn("date","Date"),t.addColumn("number","Temperature"),t.addColumn({type:"string",role:"style"}),t.addRows(["%%fragment%%"]);var e={title:"Temperature Trend %%period%%",titleTextStyle:{fontName:"Roboto",fontSize:18},tooltip:{textStyle:{color:"black",fontName:"Roboto, Arial",fontSize:"12"}},chartArea:{left:"5%",top:100,width:"90%",height:400},legend:"none",animation:{duration:700,easing:"out",startup:!0},bar:{groupWidth:"91.2%"},vAxis:{minValue:0,gridlines:{color:"transparent"},textStyle:{color:"black",fontName:"Roboto, Arial",fontSize:14}},hAxis:{format:"MMM dd",gridlines:{count:31,color:"transparent"},textStyle:{color:"black",fontName:"Roboto, Arial",fontSize:12},showTextEvery:2,minTextSpacing:1},width:1400,height:600},o=new google.visualization.ColumnChart(document.getElementById("chart_div"));o.draw(t,e)}google.charts.load("current",{packages:["corechart"]}),google.charts.setOnLoadCallback(drawChart)</script></head><body><div id="chart_div"></div><div id="chart_png"></div></body></html>
+"@
+            # Change the template's placeholders with the historical data.
+            $Html = $MinifiedChartCode.Replace('"%%fragment%%"', $String).Replace('%%period%%', "$($StartDate.ToShortDateString()) - $($EndDate.ToShortDateString())" )
+
+            # Create the file output path and name.
+            $File = [System.IO.Path]::Combine($DirectoryPath, "HiveHeatingHistory-$ZoneName-$(Get-Date $StartDate -Format "yyyyMMdd")-$(Get-Date $EndDate -Format "yyyyMMdd").htm")
+
+            $Html | Out-File -FilePath $File -NoClobber
+
+            Return $File
+
+        }
+        Catch {
+            $this.ReturnError($_)
+            Return $null
+        }
+    }
+
 
     <#
         Get the current state of the heating. This method does not obtain a property from a device or product, 
