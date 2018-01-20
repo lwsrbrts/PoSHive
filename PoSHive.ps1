@@ -32,7 +32,7 @@ Class Hive {
     [ValidateLength(4, 100)][string] $Username
     [securestring] $Password
     [string] $ApiSessionId
-    hidden [string] $Agent = 'PoSHive 2.2.0 - github.com-lwsrbrts-PoSHive'
+    hidden [string] $Agent = 'PoSHive 2.2.1 - github.com-lwsrbrts-PoSHive'
     [psobject] $User
     [psobject] $Devices
     [psobject] $Products
@@ -1521,32 +1521,32 @@ Class Hive {
 
         Try {
             [hashtable] $ColourTemps = @{
-                t5  = [System.Drawing.Color]::FromArgb(80, 181, 221)
-                t6  = [System.Drawing.Color]::FromArgb(78, 178, 206)
-                t7  = [System.Drawing.Color]::FromArgb(76, 176, 190)
-                t8  = [System.Drawing.Color]::FromArgb(73, 173, 175)
-                t9  = [System.Drawing.Color]::FromArgb(72, 171, 159)
-                t10 = [System.Drawing.Color]::FromArgb(70, 168, 142)
-                t11 = [System.Drawing.Color]::FromArgb(68, 166, 125)
-                t12 = [System.Drawing.Color]::FromArgb(66, 164, 108)
-                t13 = [System.Drawing.Color]::FromArgb(102, 173, 94)
-                t14 = [System.Drawing.Color]::FromArgb(135, 190, 64)
-                t15 = [System.Drawing.Color]::FromArgb(179, 204, 26)
-                t16 = [System.Drawing.Color]::FromArgb(214, 213, 28)
-                t17 = [System.Drawing.Color]::FromArgb(249, 202, 3)
-                t18 = [System.Drawing.Color]::FromArgb(246, 181, 3)
-                t19 = [System.Drawing.Color]::FromArgb(244, 150, 26)
-                t20 = [System.Drawing.Color]::FromArgb(236, 110, 5)
-                t21 = [System.Drawing.Color]::FromArgb(234, 90, 36)
-                t22 = [System.Drawing.Color]::FromArgb(228, 87, 43)
-                t23 = [System.Drawing.Color]::FromArgb(225, 74, 41)
-                t24 = [System.Drawing.Color]::FromArgb(224, 65, 39)
-                t25 = [System.Drawing.Color]::FromArgb(217, 55, 43)
-                t26 = [System.Drawing.Color]::FromArgb(214, 49, 41)
-                t27 = [System.Drawing.Color]::FromArgb(209, 43, 43)
-                t28 = [System.Drawing.Color]::FromArgb(205, 40, 47)
-                t29 = [System.Drawing.Color]::FromArgb(200, 36, 50)
-                t30 = [System.Drawing.Color]::FromArgb(195, 35, 52)
+                t5  = @{R = 80; G = 181; B = 221}
+                t6  = @{R = 78; G = 178; B = 206}
+                t7  = @{R = 76; G = 176; B = 190}
+                t8  = @{R = 73; G = 173; B = 175}
+                t9  = @{R = 72; G = 171; B = 159}
+                t10 = @{R = 70; G = 168; B = 142}
+                t11 = @{R = 68; G = 166; B = 125}
+                t12 = @{R = 66; G = 164; B = 108}
+                t13 = @{R = 102; G = 173; B = 94}
+                t14 = @{R = 135; G = 190; B = 64}
+                t15 = @{R = 179; G = 204; B = 26}
+                t16 = @{R = 214; G = 213; B = 28}
+                t17 = @{R = 249; G = 202; B = 3}
+                t18 = @{R = 246; G = 181; B = 3}
+                t19 = @{R = 244; G = 150; B = 26}
+                t20 = @{R = 236; G = 110; B = 5}
+                t21 = @{R = 234; G = 90; B = 36}
+                t22 = @{R = 228; G = 87; B = 43}
+                t23 = @{R = 225; G = 74; B = 41}
+                t24 = @{R = 224; G = 65; B = 39}
+                t25 = @{R = 217; G = 55; B = 43}
+                t26 = @{R = 214; G = 49; B = 41}
+                t27 = @{R = 209; G = 43; B = 43}
+                t28 = @{R = 205; G = 40; B = 47}
+                t29 = @{R = 200; G = 36; B = 50}
+                t30 = @{R = 195; G = 35; B = 52}
             }
 
             # Format the data suitable for Google Charts output
