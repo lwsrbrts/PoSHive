@@ -32,7 +32,7 @@ Class Hive {
     [ValidateLength(4, 100)][string] $Username
     [securestring] $Password
     [string] $ApiSessionId
-    hidden [string] $Agent = 'PoSHive 2.2.1 - github.com-lwsrbrts-PoSHive'
+    hidden [string] $Agent = 'PoSHive 2.2.2 - github.com-lwsrbrts-PoSHive'
     [psobject] $User
     [psobject] $Devices
     [psobject] $Products
@@ -1566,7 +1566,7 @@ Class Hive {
             # Create the file output path and name.
             $File = [System.IO.Path]::Combine($DirectoryPath, "HiveHeatingHistory-$ZoneName-$(Get-Date $StartDate -Format "yyyyMMdd")-$(Get-Date $EndDate -Format "yyyyMMdd").htm")
 
-            $Html | Out-File -FilePath $File -NoClobber
+            $Html | Out-File -FilePath $File -NoClobber -Encoding utf8
 
             Return $File
 
