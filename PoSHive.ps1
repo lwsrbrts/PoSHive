@@ -32,7 +32,7 @@ Class Hive {
     [ValidateLength(4, 100)][string] $Username
     [securestring] $Password
     [string] $ApiSessionId
-    hidden [string] $Agent = 'PoSHive 2.2.2 - github.com-lwsrbrts-PoSHive'
+    hidden [string] $Agent = 'PoSHive 2.3.0 - github.com-lwsrbrts-PoSHive'
     [psobject] $User
     [psobject] $Devices
     [psobject] $Products
@@ -1604,6 +1604,100 @@ Class Hive {
         Else {Return $false}
     }
 
+    <#
+        Get the object data for a colour bulb by its name. We define it as a colour bulb by checking its capability as one. One assumes a tuneable bulb does not have this property.
+    #>
+    hidden [psobject] GetColourBulb([string]$Name) {
+        $ColourBulb = $this.Products | Where-Object {($_.type -eq "colourtuneablelight") -and ($_.state.name -eq $Name) -and ($_.props.capabilities -contains 'LIGHT_COLOUR')}
+        If ($ColourBulb) { Return $ColourBulb }
+        Else { Return $false }
+    }
+
+    <#
+        Set the state of a named colour bulb to be either on ($true) or off ($false).
+        Uses a boolean as opposed to a text value.
+    #>
+    [string] SetColourBulbState([bool]$State, [string]$Name) {
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+
+        # Update nodes
+        $this.Products = $this.GetProducts()
+        $this.Devices = $this.GetDevices()
+
+        # Check that the plug name exists and assign to a var if so.
+        If (-not ($ColourBulb = $this.GetColourBulb($Name))) {
+            $this.ReturnError("The colour bulb name provided `"$Name`" does not exist.")
+        }
+        
+        $Settings = $null
+
+        Switch ($ColourBulb.state.status) {
+            {($_ -eq "ON") -and ($State -eq $true) } { Return "`"$Name`" is already ON." }
+            {($_ -eq "OFF") -and ($State -eq $false) } { Return "`"$Name`" is already OFF." }
+        }
+
+        Switch ($State) {
+            $true { $Settings = [psobject]@{status = "ON"} }
+            $false { $Settings = [psobject]@{status = "OFF"} }
+        }
+
+        Try {
+            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/colourtuneablelight/$($ColourBulb.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+        }
+        Catch {
+            $this.ReturnError($_)
+            Return $null
+        }
+        
+        Return "Colour Bulb `"$Name`" set to $($Settings.status) successfully."
+    }
+    
+    <#
+        Sets the temperature value on the named thermostat device in the system.
+        $this.Products and $this.Devices is always refreshed prior to execution.
+    #>
+    [psobject] SetColourBulbWhite([string] $Name, [int] $Temperature, [int] $Brightness) {
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+
+        # Update nodes
+        $this.Products = $this.GetProducts()
+        $this.Devices = $this.GetDevices()
+
+        # Check that the colour bulb name exists and assign to a var if so.
+        If (-not ($ColourBulb = $this.GetColourBulb($Name))) {
+            $this.ReturnError("The colour bulb name provided `"$Name`" does not exist.")
+        }
+
+        # Check that the brightness value provided is valid between 0 and 100.
+        If (-not ($Brightness -in 0..100)) {
+            $this.ReturnError("Please provide a brightness between 0 and 100.")
+        }
+        # Check that the temperature value provided is valid
+        If (-not ($Temperature -in ($ColourBulb.props.colourTemperature.min)..($ColourBulb.props.colourTemperature.max))) {
+            $this.ReturnError("Please provide a colour temperature between $($ColourBulb.props.colourTemperature.min) and $($ColourBulb.props.colourTemperature.max).")
+        }
+
+        # Check the bulb is not in OFF state
+        If ($ColourBulb.state.status -eq 'OFF') {
+            $this.ReturnError("The colour bulb `"$Name`" is currently OFF. Set to MANUAL or SCHEDULE first.")
+        }
+
+        # This will be converted to JSON. I suppose it could just be JSON but...meh.
+        $Settings = [psobject]@{
+            colourMode = "WHITE"
+            brightness = $Brightness
+            colourTemperature = $Temperature
+        }
+
+        Try {
+            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/colourtuneablelight/$($ColourBulb.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+            Return $Response #"Colour bulb set successfully."
+        }
+        Catch {
+            $this.ReturnError($_)
+            Return $null
+        }
+    }
 
     
     # END HIVE CLASS
