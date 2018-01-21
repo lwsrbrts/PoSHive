@@ -5,8 +5,8 @@ Enum HeatingMode {
     OFF
 }
 
-Enum ActivePlugMode {
-    <# Defines the modes that can be set on an active plug. #>
+Enum DeviceMode {
+    <# Defines the modes that can be set on a device. #>
     SCHEDULE
     MANUAL
 }
@@ -964,7 +964,7 @@ Class Hive {
         If you subsequently switch back to MANUAL, the plug will not switch off again
         as there is no previous configuration setting on Active Plugs.
     #>
-    [string] SetActivePlugMode([ActivePlugMode]$Mode, [string]$Name) {
+    [string] SetActivePlugMode([DeviceMode]$Mode, [string]$Name) {
         If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
 
         # Update nodes
@@ -1521,11 +1521,16 @@ Class Hive {
 
         Try {
             [hashtable] $ColourTemps = @{
-                t5  = @{R = 80; G = 181; B = 221}
-                t6  = @{R = 78; G = 178; B = 206}
-                t7  = @{R = 76; G = 176; B = 190}
-                t8  = @{R = 73; G = 173; B = 175}
-                t9  = @{R = 72; G = 171; B = 159}
+                t0 = @{R = 181; G = 196; B = 198}
+                t1 = @{R = 155; G = 189; B = 193}
+                t2 = @{R = 130; G = 181; B = 188}
+                t3 = @{R = 106; G = 176; B = 186}
+                t4 = @{R = 81; G = 169; B = 181}
+                t5 = @{R = 80; G = 181; B = 221}
+                t6 = @{R = 78; G = 178; B = 206}
+                t7 = @{R = 76; G = 176; B = 190}
+                t8 = @{R = 73; G = 173; B = 175}
+                t9 = @{R = 72; G = 171; B = 159}
                 t10 = @{R = 70; G = 168; B = 142}
                 t11 = @{R = 68; G = 166; B = 125}
                 t12 = @{R = 66; G = 164; B = 108}
@@ -1547,6 +1552,8 @@ Class Hive {
                 t28 = @{R = 205; G = 40; B = 47}
                 t29 = @{R = 200; G = 36; B = 50}
                 t30 = @{R = 195; G = 35; B = 52}
+                t31 = @{R = 190; G = 33; B = 56}
+                t32 = @{R = 185; G = 32; B = 59}
             }
 
             # Format the data suitable for Google Charts output
@@ -1616,7 +1623,7 @@ Class Hive {
     <#
         Gets an ordered list of properties and their values of the named bulb.
     #>
-    [psobject] GetColourBulbState([string]$Name) {
+    [psobject] GetColourBulbConfig([string]$Name) {
         If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
 
         # Update nodes
@@ -1651,7 +1658,7 @@ Class Hive {
         Set the state of a named colour bulb to be either on ($true) or off ($false).
         Uses a boolean as opposed to a text value.
     #>
-    [string] SetColourBulbOn([string]$Name, [bool]$State) {
+    [string] SetColourBulbState([bool]$State, [string]$Name) {
         If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
 
         # Update nodes
@@ -1721,6 +1728,11 @@ Class Hive {
             $this.ReturnError("The colour bulb `"$Name`" is currently OFF. Set to MANUAL or SCHEDULE first.")
         }
 
+        $Device = $this.Devices | Where-Object {($_.id -eq $ColourBulb.id)}
+        If ($Device.props.online -ne $true) {
+            $this.ReturnError("The colour bulb `"$Name`" is not reachable and may be powered off at the mains.")
+        }
+
         # This will be converted to JSON. I suppose it could just be JSON but...meh.
         $Settings = [psobject]@{
             colourMode = "WHITE"
@@ -1739,8 +1751,8 @@ Class Hive {
     }
 
     <#
-        Sets the temperature value on the named thermostat device in the system.
-        $this.Products and $this.Devices is always refreshed prior to execution.
+        Sets a colour bulb using colour mode. Specify the hue saturation and brightness.
+        Technically you don't have control over saturation on the Hive web app.
     #>
     [psobject] SetColourBulbColour([string] $Name, [int] $Hue, [int] $Saturation, [int] $Brightness) {
         If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
@@ -1773,6 +1785,12 @@ Class Hive {
         If ($ColourBulb.state.status -eq 'OFF') {
             $this.ReturnError("The colour bulb `"$Name`" is currently OFF. Set to MANUAL or SCHEDULE first.")
         }
+        
+        # Check that the device is reachable. If it has just been turned on/off, it takes some time before the API knows.
+        $Device = $this.Devices | Where-Object {($_.id -eq $ColourBulb.id)}
+        If ($Device.props.online -ne $true) {
+            $this.ReturnError("The colour bulb `"$Name`" is not reachable and may be powered off at the mains.")
+        }
 
         # This will be converted to JSON.
         $Settings = [psobject]@{
@@ -1790,6 +1808,47 @@ Class Hive {
             $this.ReturnError($_)
             Return $null
         }
+    }
+
+    <#
+        Set the mode of a colour bulb to be either MANUAL or SCHEDULE.
+        If you switch to SCHEDULE mode and the schedule is for the bulb to be on, it will turn on.
+        If you subsequently switch back to MANUAL, the bulb will not switch off again
+        as there is no previous configuration setting on Colour Lights.
+    #>
+    [string] SetColourBulbMode([DeviceMode]$Mode, [string]$Name) {
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+
+        # Update nodes
+        $this.Products = $this.GetProducts()
+        $this.Devices = $this.GetDevices()
+
+        # Check that the colour bulb name exists and assign to a var if so.
+        If (-not ($ColourBulb = $this.GetColourBulb($Name))) {
+            $this.ReturnError("The colour bulb name provided `"$Name`" does not exist.")
+        }
+        
+        $Settings = $null
+
+        Switch ($ColourBulb.state.mode) {
+            {($_ -eq "MANUAL") -and ($Mode -eq 'MANUAL') } { Return "`"$Name`" is already in MANUAL." }
+            {($_ -eq "SCHEDULE") -and ($Mode -eq 'SCHEDULE') } { Return "`"$Name`" is already in SCHEDULE." }
+        }
+
+        Switch ($Mode) {
+            'MANUAL' { $Settings = [psobject]@{mode = "MANUAL"} }
+            'SCHEDULE' { $Settings = [psobject]@{mode = "SCHEDULE"} }
+        }
+
+        Try {
+            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/colourtuneablelight/$($ColourBulb.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+        }
+        Catch {
+            $this.ReturnError($_)
+            Return $null
+        }
+        
+        Return $Response #"Active Plug `"$Name`" set to $($Settings.mode) successfully."
     }
 
     # END HIVE CLASS
