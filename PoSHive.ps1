@@ -1607,17 +1607,16 @@ Class Hive {
     <#
         Get the object data for a colour bulb by its name. We define it as a colour bulb by checking its capability as one. One assumes a tuneable bulb does not have this property.
     #>
-    hidden [psobject] GetColourBulb([string]$Name) {
+    [psobject] GetColourBulb([string]$Name) {
         $ColourBulb = $this.Products | Where-Object {($_.type -eq "colourtuneablelight") -and ($_.state.name -eq $Name) -and ($_.props.capabilities -contains 'LIGHT_COLOUR')}
         If ($ColourBulb) { Return $ColourBulb }
         Else { Return $false }
     }
 
     <#
-        Set the state of a named colour bulb to be either on ($true) or off ($false).
-        Uses a boolean as opposed to a text value.
+        Gets an ordered list of properties and their values of the named bulb.
     #>
-    [string] SetColourBulbState([bool]$State, [string]$Name) {
+    [psobject] GetColourBulbState([string]$Name) {
         If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
 
         # Update nodes
@@ -1627,6 +1626,46 @@ Class Hive {
         # Check that the plug name exists and assign to a var if so.
         If (-not ($ColourBulb = $this.GetColourBulb($Name))) {
             $this.ReturnError("The colour bulb name provided `"$Name`" does not exist.")
+        }
+
+        $Device = $this.Devices | Where-Object {($_.id -eq $ColourBulb.id)}
+
+        $State = [ordered]@{
+            Status = $ColourBulb.state.status
+            Reachable = $Device.props.online
+            Management = $ColourBulb.state.mode
+            ColourMode = $ColourBulb.state.colourMode
+            ColourTemperature = $ColourBulb.state.colourTemperature
+            Hue = $ColourBulb.state.hue
+            Saturation = $ColourBulb.state.saturation
+            Brightness = $ColourBulb.state.brightness
+            MinColourTemperature = $ColourBulb.props.colourTemperature.min
+            MaxColourTemperature = $ColourBulb.props.colourTemperature.max
+        }
+
+        Return $State
+        
+    }
+
+    <#
+        Set the state of a named colour bulb to be either on ($true) or off ($false).
+        Uses a boolean as opposed to a text value.
+    #>
+    [string] SetColourBulbOn([string]$Name, [bool]$State) {
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+
+        # Update nodes
+        $this.Products = $this.GetProducts()
+        $this.Devices = $this.GetDevices()
+
+        # Check that the colour bulb name exists and assign to a var if so.
+        If (-not ($ColourBulb = $this.GetColourBulb($Name))) {
+            $this.ReturnError("The colour bulb name provided `"$Name`" does not exist.")
+        }
+
+        $Device = $this.Devices | Where-Object {($_.id -eq $ColourBulb.id)}
+        If ($Device.props.online -ne $true) {
+            $this.ReturnError("The colour bulb `"$Name`" is not reachable and may be powered off at the mains.")
         }
         
         $Settings = $null
@@ -1699,6 +1738,59 @@ Class Hive {
         }
     }
 
-    
+    <#
+        Sets the temperature value on the named thermostat device in the system.
+        $this.Products and $this.Devices is always refreshed prior to execution.
+    #>
+    [psobject] SetColourBulbColour([string] $Name, [int] $Hue, [int] $Saturation, [int] $Brightness) {
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+
+        # Update nodes
+        $this.Products = $this.GetProducts()
+        $this.Devices = $this.GetDevices()
+
+        # Check that the colour bulb name exists and assign to a var if so.
+        If (-not ($ColourBulb = $this.GetColourBulb($Name))) {
+            $this.ReturnError("The colour bulb name provided `"$Name`" does not exist.")
+        }
+
+        # Check that the brightness value provided is valid between 0 and 100.
+        If (-not ($Brightness -in 0..100)) {
+            $this.ReturnError("Please provide a brightness between 0 and 100.")
+        }
+
+        # Check that the hue value provided is valid between 0 and 359.
+        If (-not ($Hue -in 0..359)) {
+            $this.ReturnError("Please provide a hue value between 0 and 359.")
+        }
+
+        # Check that the saturation value provided is valid between 0 and 99.
+        If (-not ($Saturation -in 0..99)) {
+            $this.ReturnError("Please provide a saturation value between 0 and 99.")
+        }
+        
+        # Check the bulb is not in OFF state
+        If ($ColourBulb.state.status -eq 'OFF') {
+            $this.ReturnError("The colour bulb `"$Name`" is currently OFF. Set to MANUAL or SCHEDULE first.")
+        }
+
+        # This will be converted to JSON.
+        $Settings = [psobject]@{
+            colourMode = "COLOUR"
+            value = $Brightness
+            hue = $Hue
+            saturation = $Saturation
+        }
+
+        Try {
+            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/colourtuneablelight/$($ColourBulb.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+            Return $Response #"Colour bulb set successfully."
+        }
+        Catch {
+            $this.ReturnError($_)
+            Return $null
+        }
+    }
+
     # END HIVE CLASS
 }    
