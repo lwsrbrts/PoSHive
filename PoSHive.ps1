@@ -22,6 +22,29 @@ Enum BoostTime {
     SIX
 }
 
+Enum ColourHues {
+    <# Defines colour hue values for colour lights. #>
+    Red = 0
+    Orange = 20
+    Yellow = 40
+    Lime = 60
+    LightGreen = 80
+    Green = 100
+    BrightGreen = 120
+    Turquoise = 140
+    LightBlue = 160
+    Blue = 180
+    BrightBlue = 200
+    SkyBlue = 220
+    RoyalBlue = 220
+    Mauve = 260
+    Pink = 280
+    LightPurple = 300
+    Purple = 320
+    BrightPink = 340
+    DarkPink = 359
+}
+
 Class Hive {
 
     ##############
@@ -32,7 +55,7 @@ Class Hive {
     [ValidateLength(4, 100)][string] $Username
     [securestring] $Password
     [string] $ApiSessionId
-    hidden [string] $Agent = 'PoSHive 2.3.0 - github.com-lwsrbrts-PoSHive'
+    hidden [string] $Agent = 'PoSHive 2.3.1 - github.com-lwsrbrts-PoSHive'
     [psobject] $User
     [psobject] $Devices
     [psobject] $Products
