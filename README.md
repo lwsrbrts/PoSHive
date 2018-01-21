@@ -18,7 +18,7 @@ Or [download from the releases](https://github.com/lwsrbrts/PoSHive/releases) pa
 
 ## Release Notes
 
-__Not all of the commands are covered in this read me (it's getting too long). Please see the [Wiki](wiki) for more information__
+__Not all of the commands are covered in this read me (it's getting too long). Please see the [Wiki](/wiki) for more information__
 
 * [**2.3.0 - Colour Light**](https://github.com/lwsrbrts/PoSHive/releases/tag/v2.3.0) - 21/01/2018 - Support for Colour Lights (not tuneable).
 * **2.2.0 - History** - 18/01/2018 - Added the ability to retrieve historical daily average temperature data from the Hive API up to 120 days in the past and produce either an object or a column chart using Google Charts for instant visualisation.
