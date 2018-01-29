@@ -59,11 +59,13 @@ Class Hive {
     [psobject] $User
     [psobject] $Devices
     [psobject] $Products
+    hidden [datetime] $LoginTime
     hidden [hashtable] $Headers = @{
         'Accept'       = '*/*'
         'User-Agent'   = $this.Agent
         'Content-Type' = 'application/json'
     }
+    hidden [int] $SessionWarnTime = 30
     
     ###############
     # CONSTRUCTOR #
@@ -109,6 +111,11 @@ Class Hive {
         Write-Error $e -ErrorAction Stop
     }
 
+    # Return warning and continue
+    hidden [void] ReturnWarning([string] $e) {
+        Write-Warning $e
+    }
+
     # Login - could do this in the constructor but makes sense to have it as a separate method. May only want weather!
     [void] Login () {
         If ($this.ApiSessionId) {$this.ReturnError("You are already logged in.")}
@@ -128,6 +135,7 @@ Class Hive {
             $this.Devices = $Response.devices
             $this.Products = $Response.products
             $this.User = $Response.user
+            $this.LoginTime = (Get-Date)
         }
         Catch {
             $this.ReturnError($_)
@@ -168,6 +176,7 @@ Class Hive {
     #>
     [psobject] GetProducts() {
         If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If ((Get-Date) -gt ($this.LoginTime).AddMinutes($this.SessionWarnTime)) {$this.ReturnWarning("Your session has been active for over $($this.SessionWarnTime) minutes. Consider logging in again if your session requires it.")}
         Try {
             $Response = Invoke-RestMethod -Method Get -Uri "$($this.ApiUrl)/products?after=" -Headers $this.Headers -ErrorAction Stop
             Return $Response
@@ -1007,9 +1016,11 @@ Class Hive {
         }
 
         Switch ($Mode) {
-            'MANUAL' { $Settings = [psobject]@{mode = "MANUAL"} 
+            'MANUAL' {
+                $Settings = [psobject]@{mode = "MANUAL"} 
             }
-            'SCHEDULE' { $Settings = [psobject]@{mode = "SCHEDULE"} 
+            'SCHEDULE' {
+                $Settings = [psobject]@{mode = "SCHEDULE"} 
             }
         }
 
@@ -1048,9 +1059,11 @@ Class Hive {
         }
 
         Switch ($State) {
-            $true { $Settings = [psobject]@{status = "ON"} 
+            $true {
+                $Settings = [psobject]@{status = "ON"} 
             }
-            $false { $Settings = [psobject]@{status = "OFF"} 
+            $false {
+                $Settings = [psobject]@{status = "OFF"} 
             }
         }
 
@@ -1544,16 +1557,16 @@ Class Hive {
 
         Try {
             [hashtable] $ColourTemps = @{
-                t0 = @{R = 181; G = 196; B = 198}
-                t1 = @{R = 155; G = 189; B = 193}
-                t2 = @{R = 130; G = 181; B = 188}
-                t3 = @{R = 106; G = 176; B = 186}
-                t4 = @{R = 81; G = 169; B = 181}
-                t5 = @{R = 80; G = 181; B = 221}
-                t6 = @{R = 78; G = 178; B = 206}
-                t7 = @{R = 76; G = 176; B = 190}
-                t8 = @{R = 73; G = 173; B = 175}
-                t9 = @{R = 72; G = 171; B = 159}
+                t0  = @{R = 181; G = 196; B = 198}
+                t1  = @{R = 155; G = 189; B = 193}
+                t2  = @{R = 130; G = 181; B = 188}
+                t3  = @{R = 106; G = 176; B = 186}
+                t4  = @{R = 81; G = 169; B = 181}
+                t5  = @{R = 80; G = 181; B = 221}
+                t6  = @{R = 78; G = 178; B = 206}
+                t7  = @{R = 76; G = 176; B = 190}
+                t8  = @{R = 73; G = 173; B = 175}
+                t9  = @{R = 72; G = 171; B = 159}
                 t10 = @{R = 70; G = 168; B = 142}
                 t11 = @{R = 68; G = 166; B = 125}
                 t12 = @{R = 66; G = 164; B = 108}
@@ -1661,14 +1674,14 @@ Class Hive {
         $Device = $this.Devices | Where-Object {($_.id -eq $ColourBulb.id)}
 
         $State = [ordered]@{
-            Status = $ColourBulb.state.status
-            Reachable = $Device.props.online
-            Management = $ColourBulb.state.mode
-            ColourMode = $ColourBulb.state.colourMode
-            ColourTemperature = $ColourBulb.state.colourTemperature
-            Hue = $ColourBulb.state.hue
-            Saturation = $ColourBulb.state.saturation
-            Brightness = $ColourBulb.state.brightness
+            Status               = $ColourBulb.state.status
+            Reachable            = $Device.props.online
+            Management           = $ColourBulb.state.mode
+            ColourMode           = $ColourBulb.state.colourMode
+            ColourTemperature    = $ColourBulb.state.colourTemperature
+            Hue                  = $ColourBulb.state.hue
+            Saturation           = $ColourBulb.state.saturation
+            Brightness           = $ColourBulb.state.brightness
             MinColourTemperature = $ColourBulb.props.colourTemperature.min
             MaxColourTemperature = $ColourBulb.props.colourTemperature.max
         }
@@ -1706,8 +1719,12 @@ Class Hive {
         }
 
         Switch ($State) {
-            $true { $Settings = [psobject]@{status = "ON"} }
-            $false { $Settings = [psobject]@{status = "OFF"} }
+            $true { 
+                $Settings = [psobject]@{status = "ON"} 
+            }
+            $false { 
+                $Settings = [psobject]@{status = "OFF"} 
+            }
         }
 
         Try {
@@ -1748,7 +1765,7 @@ Class Hive {
 
         # Check the bulb is not in OFF state
         If ($ColourBulb.state.status -eq 'OFF') {
-            $this.ReturnError("The colour bulb `"$Name`" is currently OFF. Set to MANUAL or SCHEDULE first.")
+            $this.ReturnError("The colour bulb `"$Name`" is currently OFF. Set the state of the colour bulb to ON first.")
         }
 
         $Device = $this.Devices | Where-Object {($_.id -eq $ColourBulb.id)}
@@ -1758,8 +1775,8 @@ Class Hive {
 
         # This will be converted to JSON. I suppose it could just be JSON but...meh.
         $Settings = [psobject]@{
-            colourMode = "WHITE"
-            brightness = $Brightness
+            colourMode        = "WHITE"
+            brightness        = $Brightness
             colourTemperature = $Temperature
         }
 
@@ -1806,7 +1823,7 @@ Class Hive {
         
         # Check the bulb is not in OFF state
         If ($ColourBulb.state.status -eq 'OFF') {
-            $this.ReturnError("The colour bulb `"$Name`" is currently OFF. Set to MANUAL or SCHEDULE first.")
+            $this.ReturnError("The colour bulb `"$Name`" is currently OFF. Set the state of the colour bulb to ON first.")
         }
         
         # Check that the device is reachable. If it has just been turned on/off, it takes some time before the API knows.
@@ -1818,8 +1835,8 @@ Class Hive {
         # This will be converted to JSON.
         $Settings = [psobject]@{
             colourMode = "COLOUR"
-            value = $Brightness
-            hue = $Hue
+            value      = $Brightness
+            hue        = $Hue
             saturation = $Saturation
         }
 
@@ -1859,8 +1876,12 @@ Class Hive {
         }
 
         Switch ($Mode) {
-            'MANUAL' { $Settings = [psobject]@{mode = "MANUAL"} }
-            'SCHEDULE' { $Settings = [psobject]@{mode = "SCHEDULE"} }
+            'MANUAL' { 
+                $Settings = [psobject]@{mode = "MANUAL"} 
+            }
+            'SCHEDULE' { 
+                $Settings = [psobject]@{mode = "SCHEDULE"} 
+            }
         }
 
         Try {
@@ -1874,5 +1895,110 @@ Class Hive {
         Return $Response #"Active Plug `"$Name`" set to $($Settings.mode) successfully."
     }
 
+    <#
+        Provides a way of quickly reviewing the names and device types associated
+        with the currently logged on users' Hive system.
+    #>
+    [psobject] GetDevicesObject() {
+        # Update devices
+        $this.Devices = $this.GetDevices()
+
+        $Object = Foreach ($Device in $this.Devices) {
+            $Property = [ordered]@{
+                Type         = $Device.type
+                LastSeen     = $this.ConvertUnixTime($Device.LastSeen)
+                Id           = $Device.id
+                Reachable    = $Device.props.online
+                FriendlyName = $Device.state.name
+                Power        = $Device.props.power
+                BatteryLevel = $Device.props.battery
+                Signal       = $Device.props.signal
+            }
+            # Create the new object.
+            New-Object -TypeName PSObject -Property $Property
+
+        }
+
+        Return $Object
+    
+    }
+
+    <#
+        Save a colour bulb schedule to a JSON formatted file.
+        Specify a directory ONLY - the file will be named HiveActivePlugSchedule-yyyyMMddHHmm.json
+    #>
+    [void] SaveColourBulbScheduleToFile([System.IO.DirectoryInfo] $DirectoryPath, [string] $Name) {
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $DirectoryPath.Exists) {$this.ReturnError("The path should already exist.")}
+
+        # Update nodes data
+        $this.Products = $this.GetProducts()
+        $this.Devices = $this.GetDevices()
+        
+        # Check that the colour bulb name exists and assign to a var if so.
+        If (-not ($ColourBulb = $this.GetColourBulb($Name))) {
+            $this.ReturnError("The colour bulb name provided `"$Name`" does not exist.")
+        }
+
+        # Create the correct json structure.
+        $Settings = [psobject]@{
+            schedule = $ColourBulb.state.schedule
+        }
+
+        # Create the file output path and name.
+        $File = [System.IO.Path]::Combine($DirectoryPath, "HiveColourBulbSchedule-$(Get-Date -Format "yyyyMMdd-HHmm").json")
+
+        # Save the file to disk or error if it exists - let the user handle renaming/moving/deleting.
+        Try {
+            ConvertTo-Json -InputObject $Settings -Depth 99 | Out-File -FilePath $File -NoClobber
+        }
+        Catch {
+            $this.ReturnError("An error occurred saving the file.`r`n$_")
+        }
+    }
+
+    <#
+        Reads in a JSON file containing Colour Bulb schedule data, checks it and uploads to the Hive site.
+        To ensure that the format is correct, it is recommended to save a copy of your current
+        schedule first using SaveColourBulbScheduleToFile().
+        If you have multiple colour bulbs and want them synchronised, you only have to update one schedule, save it,
+        then upload it to all the other colour bulbs identified by their name.
+    #>
+    [string] SetColourBulbScheduleFromFile([System.IO.FileInfo] $FilePath, [string] $Name) {
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not (Test-Path -Path $FilePath )) {$this.ReturnError("The file path supplied does not exist.")}
+
+        # Update nodes data
+        $this.Products = $this.GetProducts()
+        $this.Devices = $this.GetDevices()
+
+        # Check that the colour bulb name exists and assign to a var if so.
+        If (-not ($ColourBulb = $this.GetColourBulb($Name))) {
+            $this.ReturnError("The colour bulb name provided `"$Name`" does not exist.")
+        }
+
+        $Settings = $null
+        
+        # Read in the schedule data from the file.
+        Try {
+            $Settings = ConvertFrom-Json -InputObject (Get-Content -Path $FilePath -Raw)
+        }
+        Catch {
+            $this.ReturnError("The file specified could not be parsed as valid JSON.`r`n$_")
+        }
+
+        # Seven days of events in the file?
+        If (((($Settings.schedule).psobject.Members | Where-Object {$_.MemberType -eq 'NoteProperty'}).count) -eq 7) {
+            Try {
+                $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/colourtuneablelight/$($ColourBulb.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+                Return "$($ColourBulb.state.name) schedule set successfully from `"$FilePath`""
+            }
+            Catch {
+                $this.ReturnError($_)
+                Return $null
+            }
+        }
+        Else {Return "The schedule in the file must contain entries for all seven days."}
+    }
     # END HIVE CLASS
 }    
