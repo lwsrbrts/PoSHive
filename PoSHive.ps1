@@ -55,7 +55,7 @@ Class Hive {
     [ValidateLength(4, 100)][string] $Username
     [securestring] $Password
     [string] $ApiSessionId
-    hidden [string] $Agent = 'PoSHive 2.3.1 - github.com-lwsrbrts-PoSHive'
+    hidden [string] $Agent = 'PoSHive 2.4.0 - github.com-lwsrbrts-PoSHive'
     [psobject] $User
     [psobject] $Devices
     [psobject] $Products
@@ -1651,8 +1651,17 @@ Class Hive {
         Get the object data for a colour bulb by its name. We define it as a colour bulb by checking its capability as one. One assumes a tuneable bulb does not have this property.
     #>
     [psobject] GetColourBulb([string]$Name) {
-        $ColourBulb = $this.Products | Where-Object {($_.type -eq "colourtuneablelight") -and ($_.state.name -eq $Name) -and ($_.props.capabilities -contains 'LIGHT_COLOUR')}
+        $ColourBulb = $this.Products | Where-Object {($_.type -match "colour(tuneable)*light") -and ($_.state.name -eq $Name) -and ($_.props.capabilities -contains 'LIGHT_COLOUR')}
         If ($ColourBulb) { Return $ColourBulb }
+        Else { Return $false }
+    }
+
+    <#
+        Get the object data for a tuneable light bulb by its name. We define it as a tuneable bulb by checking its capability as one.
+    #>
+    [psobject] GetWhiteBulb([string]$Name) {
+        $WhiteBulb = $this.Products | Where-Object {($_.type -eq "tuneablelight") -and ($_.state.name -eq $Name) -and ($_.props.capabilities -contains 'LIGHT_TUNEABLE')}
+        If ($WhiteBulb) { Return $WhiteBulb }
         Else { Return $false }
     }
 
@@ -1685,9 +1694,36 @@ Class Hive {
             MinColourTemperature = $ColourBulb.props.colourTemperature.min
             MaxColourTemperature = $ColourBulb.props.colourTemperature.max
         }
-
         Return $State
-        
+    }
+
+    <#
+        Gets an ordered list of properties and their values of the named bulb.
+    #>
+    [psobject] GetWhiteBulbConfig([string]$Name) {
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+
+        # Update nodes
+        $this.Products = $this.GetProducts()
+        $this.Devices = $this.GetDevices()
+
+        # Check that the plug name exists and assign to a var if so.
+        If (-not ($WhiteBulb = $this.GetWhiteBulb($Name))) {
+            $this.ReturnError("The tuneable/white bulb name provided `"$Name`" does not exist.")
+        }
+
+        $Device = $this.Devices | Where-Object {($_.id -eq $WhiteBulb.id)}
+
+        $State = [ordered]@{
+            Status               = $WhiteBulb.state.status
+            Reachable            = $Device.props.online
+            Management           = $WhiteBulb.state.mode
+            ColourTemperature    = $WhiteBulb.state.colourTemperature
+            Brightness           = $WhiteBulb.state.brightness
+            MinColourTemperature = $WhiteBulb.props.colourTemperature.min
+            MaxColourTemperature = $WhiteBulb.props.colourTemperature.max
+        }
+        Return $State
     }
 
     <#
@@ -1728,7 +1764,7 @@ Class Hive {
         }
 
         Try {
-            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/colourtuneablelight/$($ColourBulb.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/$($ColourBulb.type)/$($ColourBulb.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
         }
         Catch {
             $this.ReturnError($_)
@@ -1737,6 +1773,55 @@ Class Hive {
         
         Return "Colour Bulb `"$Name`" set to $($Settings.status) successfully."
     }
+
+    <#
+        Set the state of a named colour bulb to be either on ($true) or off ($false).
+        Uses a boolean as opposed to a text value.
+    #>
+    [string] SetWhiteBulbState([bool]$State, [string]$Name) {
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+
+        # Update nodes
+        $this.Products = $this.GetProducts()
+        $this.Devices = $this.GetDevices()
+
+        # Check that the colour bulb name exists and assign to a var if so.
+        If (-not ($WhiteBulb = $this.GetWhiteBulb($Name))) {
+            $this.ReturnError("The tuneable/white bulb name provided `"$Name`" does not exist.")
+        }
+
+        $Device = $this.Devices | Where-Object {($_.id -eq $WhiteBulb.id)}
+        If ($Device.props.online -ne $true) {
+            $this.ReturnError("The tuneable/white bulb `"$Name`" is not reachable and may be powered off at the mains.")
+        }
+        
+        $Settings = $null
+
+        Switch ($WhiteBulb.state.status) {
+            {($_ -eq "ON") -and ($State -eq $true) } { Return "`"$Name`" is already ON." }
+            {($_ -eq "OFF") -and ($State -eq $false) } { Return "`"$Name`" is already OFF." }
+        }
+
+        Switch ($State) {
+            $true { 
+                $Settings = [psobject]@{status = "ON"} 
+            }
+            $false { 
+                $Settings = [psobject]@{status = "OFF"} 
+            }
+        }
+
+        Try {
+            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/$($WhiteBulb.type)/$($WhiteBulb.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+        }
+        Catch {
+            $this.ReturnError($_)
+            Return $null
+        }
+        
+        Return "White Bulb `"$Name`" set to $($Settings.status) successfully."
+    }
+
     
     <#
         Sets the temperature value on the named thermostat device in the system.
@@ -1781,7 +1866,59 @@ Class Hive {
         }
 
         Try {
-            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/colourtuneablelight/$($ColourBulb.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/$($ColourBulb.type)/$($ColourBulb.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+            Return $Response #"Colour bulb set successfully."
+        }
+        Catch {
+            $this.ReturnError($_)
+            Return $null
+        }
+    }
+
+    <#
+        Sets the temperature value on the named thermostat device in the system.
+        $this.Products and $this.Devices is always refreshed prior to execution.
+    #>
+    [psobject] SetWhiteBulbWhite([string] $Name, [int] $Temperature, [int] $Brightness) {
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+
+        # Update nodes
+        $this.Products = $this.GetProducts()
+        $this.Devices = $this.GetDevices()
+
+        # Check that the white bulb name exists and assign to a var if so.
+        If (-not ($WhiteBulb = $this.GetWhiteBulb($Name))) {
+            $this.ReturnError("The tuneable/white bulb name provided `"$Name`" does not exist.")
+        }
+
+        # Check that the brightness value provided is valid between 0 and 100.
+        If (-not ($Brightness -in 0..100)) {
+            $this.ReturnError("Please provide a brightness between 0 and 100.")
+        }
+        # Check that the temperature value provided is valid
+        If (-not ($Temperature -in ($WhiteBulb.props.colourTemperature.min)..($WhiteBulb.props.colourTemperature.max))) {
+            $this.ReturnError("Please provide a tuneable/white temperature between $($WhiteBulb.props.colourTemperature.min) and $($WhiteBulb.props.colourTemperature.max).")
+        }
+
+        # Check the bulb is not in OFF state
+        If ($WhiteBulb.state.status -eq 'OFF') {
+            $this.ReturnError("The tuneable/white bulb `"$Name`" is currently OFF. Set the state of the tuneable/white bulb to ON first.")
+        }
+
+        $Device = $this.Devices | Where-Object {($_.id -eq $WhiteBulb.id)}
+        If ($Device.props.online -ne $true) {
+            $this.ReturnError("The tuneable/white bulb `"$Name`" is not reachable and may be powered off at the mains.")
+        }
+
+        # This will be converted to JSON. I suppose it could just be JSON but...meh.
+        $Settings = [psobject]@{
+            colourMode        = "WHITE"
+            brightness        = $Brightness
+            colourTemperature = $Temperature
+        }
+
+        Try {
+            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/$($WhiteBulb.type)/$($WhiteBulb.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
             Return $Response #"Colour bulb set successfully."
         }
         Catch {
@@ -1841,7 +1978,7 @@ Class Hive {
         }
 
         Try {
-            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/colourtuneablelight/$($ColourBulb.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/$($ColourBulb.type)/$($ColourBulb.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
             Return $Response #"Colour bulb set successfully."
         }
         Catch {
@@ -1867,6 +2004,11 @@ Class Hive {
         If (-not ($ColourBulb = $this.GetColourBulb($Name))) {
             $this.ReturnError("The colour bulb name provided `"$Name`" does not exist.")
         }
+
+        # Check if this is a partner device. These don't yet support schedule or modes.
+        If ($this.GetIsPartnerDevice($ColourBulb.id) -or $this.GetIsReadOnly($ColourBulb.id)) {
+            $this.ReturnError("This type of bulb does not currently support mode changes.")
+        }
         
         $Settings = $null
 
@@ -1885,7 +2027,57 @@ Class Hive {
         }
 
         Try {
-            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/colourtuneablelight/$($ColourBulb.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/$($ColourBulb.type)/$($ColourBulb.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+        }
+        Catch {
+            $this.ReturnError($_)
+            Return $null
+        }
+        
+        Return $Response #"Active Plug `"$Name`" set to $($Settings.mode) successfully."
+    }
+
+    <#
+        Set the mode of a tuneable/white bulb to be either MANUAL or SCHEDULE.
+        If you switch to SCHEDULE mode and the schedule is for the bulb to be on, it will turn on.
+        If you subsequently switch back to MANUAL, the bulb will not switch off again
+        as there is no previous configuration setting on Tuneable/White Lights.
+    #>
+    [string] SetWhiteBulbMode([DeviceMode]$Mode, [string]$Name) {
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+
+        # Update nodes
+        $this.Products = $this.GetProducts()
+        $this.Devices = $this.GetDevices()
+
+        # Check that the colour bulb name exists and assign to a var if so.
+        If (-not ($WhiteBulb = $this.GetWhiteBulb($Name))) {
+            $this.ReturnError("The tuneable/white bulb name provided `"$Name`" does not exist.")
+        }
+
+        # Check if this is a partner device. These don't yet support schedule or modes.
+        If ($this.GetIsPartnerDevice($WhiteBulb.id) -or $this.GetIsReadOnly($WhiteBulb.id)) {
+            $this.ReturnError("This type of bulb does not currently support mode changes.")
+        }
+        
+        $Settings = $null
+
+        Switch ($WhiteBulb.state.mode) {
+            {($_ -eq "MANUAL") -and ($Mode -eq 'MANUAL') } { Return "`"$Name`" is already in MANUAL." }
+            {($_ -eq "SCHEDULE") -and ($Mode -eq 'SCHEDULE') } { Return "`"$Name`" is already in SCHEDULE." }
+        }
+
+        Switch ($Mode) {
+            'MANUAL' { 
+                $Settings = [psobject]@{mode = "MANUAL"} 
+            }
+            'SCHEDULE' { 
+                $Settings = [psobject]@{mode = "SCHEDULE"} 
+            }
+        }
+
+        Try {
+            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/$($WhiteBulb.type)/$($WhiteBulb.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
         }
         Catch {
             $this.ReturnError($_)
@@ -1918,9 +2110,7 @@ Class Hive {
             New-Object -TypeName PSObject -Property $Property
 
         }
-
-        Return $Object
-    
+        Return $Object   
     }
 
     <#
@@ -1940,6 +2130,11 @@ Class Hive {
             $this.ReturnError("The colour bulb name provided `"$Name`" does not exist.")
         }
 
+        # Check if this is a partner device. These don't yet support schedules.
+        If ($this.GetIsPartnerDevice($ColourBulb.id) -or $this.GetIsReadOnly($ColourBulb.id)) {
+            $this.ReturnError("This type of bulb does not currently support schedules.")
+        }
+
         # Create the correct json structure.
         $Settings = [psobject]@{
             schedule = $ColourBulb.state.schedule
@@ -1947,6 +2142,45 @@ Class Hive {
 
         # Create the file output path and name.
         $File = [System.IO.Path]::Combine($DirectoryPath, "HiveColourBulbSchedule-$(Get-Date -Format "yyyyMMdd-HHmm").json")
+
+        # Save the file to disk or error if it exists - let the user handle renaming/moving/deleting.
+        Try {
+            ConvertTo-Json -InputObject $Settings -Depth 99 | Out-File -FilePath $File -NoClobber
+        }
+        Catch {
+            $this.ReturnError("An error occurred saving the file.`r`n$_")
+        }
+    }
+
+    <#
+        Save a tuneable/white bulb schedule to a JSON formatted file.
+        Specify a directory ONLY - the file will be named HiveActivePlugSchedule-yyyyMMddHHmm.json
+    #>
+    [void] SaveWhiteBulbScheduleToFile([System.IO.DirectoryInfo] $DirectoryPath, [string] $Name) {
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $DirectoryPath.Exists) {$this.ReturnError("The path should already exist.")}
+
+        # Update nodes data
+        $this.Products = $this.GetProducts()
+        $this.Devices = $this.GetDevices()
+        
+        # Check that the colour bulb name exists and assign to a var if so.
+        If (-not ($WhiteBulb = $this.GetWhiteBulb($Name))) {
+            $this.ReturnError("The tuneable/white bulb name provided `"$Name`" does not exist.")
+        }
+
+        # Check if this is a partner device. These don't yet support schedules.
+        If ($this.GetIsPartnerDevice($WhiteBulb.id) -or $this.GetIsReadOnly($WhiteBulb.id)) {
+            $this.ReturnError("This type of bulb does not currently support schedules.")
+        }
+
+        # Create the correct json structure.
+        $Settings = [psobject]@{
+            schedule = $WhiteBulb.state.schedule
+        }
+
+        # Create the file output path and name.
+        $File = [System.IO.Path]::Combine($DirectoryPath, "HiveWhiteBulbSchedule-$(Get-Date -Format "yyyyMMdd-HHmm").json")
 
         # Save the file to disk or error if it exists - let the user handle renaming/moving/deleting.
         Try {
@@ -1977,6 +2211,11 @@ Class Hive {
             $this.ReturnError("The colour bulb name provided `"$Name`" does not exist.")
         }
 
+        # Check if this is a partner device. These don't yet support schedules.
+        If ($this.GetIsPartnerDevice($ColourBulb.id) -or $this.GetIsReadOnly($ColourBulb.id)) {
+            $this.ReturnError("This type of bulb does not currently support schedules.")
+        }
+
         $Settings = $null
         
         # Read in the schedule data from the file.
@@ -1990,7 +2229,7 @@ Class Hive {
         # Seven days of events in the file?
         If (((($Settings.schedule).psobject.Members | Where-Object {$_.MemberType -eq 'NoteProperty'}).count) -eq 7) {
             Try {
-                $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/colourtuneablelight/$($ColourBulb.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+                $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/$($ColourBulb.type)/$($ColourBulb.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
                 Return "$($ColourBulb.state.name) schedule set successfully from `"$FilePath`""
             }
             Catch {
@@ -2000,5 +2239,74 @@ Class Hive {
         }
         Else {Return "The schedule in the file must contain entries for all seven days."}
     }
+
+    <#
+        Reads in a JSON file containing Tuneable/White Bulb schedule data, checks it and uploads to the Hive site.
+        To ensure that the format is correct, it is recommended to save a copy of your current
+        schedule first using SaveWhiteBulbScheduleToFile().
+        If you have multiple tuneable/white bulbs and want them synchronised, you only have to update one schedule, save it,
+        then upload it to all the other tuneable/white bulbs identified by their name.
+    #>
+    [string] SetWhiteBulbScheduleFromFile([System.IO.FileInfo] $FilePath, [string] $Name) {
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not (Test-Path -Path $FilePath )) {$this.ReturnError("The file path supplied does not exist.")}
+
+        # Update nodes data
+        $this.Products = $this.GetProducts()
+        $this.Devices = $this.GetDevices()
+
+        # Check that the colour bulb name exists and assign to a var if so.
+        If (-not ($WhiteBulb = $this.GetWhiteBulb($Name))) {
+            $this.ReturnError("The colour bulb name provided `"$Name`" does not exist.")
+        }
+
+        # Check if this is a partner device. These don't yet support schedules.
+        If ($this.GetIsPartnerDevice($WhiteBulb.id) -or $this.GetIsReadOnly($WhiteBulb.id)) {
+            $this.ReturnError("This type of bulb does not currently support schedules.")
+        }
+
+        $Settings = $null
+        
+        # Read in the schedule data from the file.
+        Try {
+            $Settings = ConvertFrom-Json -InputObject (Get-Content -Path $FilePath -Raw)
+        }
+        Catch {
+            $this.ReturnError("The file specified could not be parsed as valid JSON.`r`n$_")
+        }
+
+        # Seven days of events in the file?
+        If (((($Settings.schedule).psobject.Members | Where-Object {$_.MemberType -eq 'NoteProperty'}).count) -eq 7) {
+            Try {
+                $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/$($WhiteBulb.type)/$($WhiteBulb.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+                Return "$($WhiteBulb.state.name) schedule set successfully from `"$FilePath`""
+            }
+            Catch {
+                $this.ReturnError($_)
+                Return $null
+            }
+        }
+        Else {Return "The schedule in the file must contain entries for all seven days."}
+    }
+
+    <#
+        Is the device a partner device such as a Philips Hue bulb.
+    #>
+    hidden [bool] GetIsPartnerDevice([string]$id) {
+        $Device = $this.Devices | Where-Object {($_.id -eq $id)}
+        If ($Device.partnerDevice) { Return $true }
+        Else { Return $false }
+    }
+
+    <#
+        Is the device read only
+    #>
+    hidden [bool] GetIsReadOnly([string]$id) {
+        $Device = $this.Devices | Where-Object {($_.id -eq $id)}
+        If ($Device.readOnly) { Return $true }
+        Else { Return $false }
+    }
+
+
     # END HIVE CLASS
 }    
