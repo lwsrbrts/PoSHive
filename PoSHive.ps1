@@ -684,7 +684,7 @@ Class Hive {
         $Country = $this.User.countryCode
         
         Try {
-            $Response = Invoke-RestMethod -Method Get -Uri "https://weather-prod.bgchprod.info/weather?postcode=$Postcode&country=$Country"
+            $Response = Invoke-RestMethod -Method Get -Uri "https://weather.prod.bgchprod.info/weather?postcode=$Postcode&country=$Country"
             Return $Response.weather | Select-Object description, temperature
         }
         Catch {
@@ -702,7 +702,7 @@ Class Hive {
         $CountryCode = $CountryCode.Replace(' ', '').ToUpper()
         
         Try {
-            $Response = Invoke-RestMethod -Method Get -Uri "https://weather-prod.bgchprod.info/weather?postcode=$Postcode&country=$CountryCode"
+            $Response = Invoke-RestMethod -Method Get -Uri "https://weather.prod.bgchprod.info/weather?postcode=$Postcode&country=$CountryCode"
             Return $Response.weather | Select-Object description, temperature
         }
         Catch {
@@ -715,8 +715,9 @@ Class Hive {
         Get the outside weather temperature for the users' postcode location in C
         Simply uses another method to retrieve the full result and return only the temp.
     #>
-    [int] GetWeatherTemperature() {
-        Return $this.GetWeather().temperature.value
+    [string] GetWeatherTemperature() {
+        $Weather = $this.GetWeather()
+        Return [string] $Weather.temperature.value + [string] $Weather.temperature.unit
     }
 
     <#
@@ -1596,13 +1597,12 @@ Class Hive {
             $String = @{}
             $String = foreach ($Entry in $HistoryData) {
                 $RGB = $ColourTemps.Get_Item("t$([Math]::Floor($Entry.temperature))")
-                "[new Date($($Entry.date.Year),$($Entry.date.Month - 1) , $($Entry.date.Day)), $($Entry.temperature),'color: rgb($($RGB.R),$($RGB.G),$($RGB.B))'],"
+                "[new Date($($Entry.date.Year),$($Entry.date.Month - 1),$($Entry.date.Day)),$($Entry.temperature),'color: rgb($($RGB.R),$($RGB.G),$($RGB.B))'],"
             }
             $String[$String.Count - 1] = $String[$String.Count - 1].TrimEnd(',')
 
-            $MinifiedChartCode = @"
-<html><head><link href="https://fonts.googleapis.com/css?family=Roboto" rel="stylesheet"><script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script><script type="text/javascript">function drawChart(){var t=new google.visualization.DataTable;t.addColumn("date","Date"),t.addColumn("number","Temperature"),t.addColumn({type:"string",role:"style"}),t.addRows(["%%fragment%%"]);var e={title:"Temperature Trend %%period%%",titleTextStyle:{fontName:"Roboto",fontSize:18},tooltip:{textStyle:{color:"black",fontName:"Roboto, Arial",fontSize:"12"}},chartArea:{left:"5%",top:100,width:"90%",height:400},legend:"none",animation:{duration:700,easing:"out",startup:!0},bar:{groupWidth:"91.2%"},vAxis:{minValue:0,gridlines:{color:"transparent"},textStyle:{color:"black",fontName:"Roboto, Arial",fontSize:14}},hAxis:{format:"MMM dd",gridlines:{count:31,color:"transparent"},textStyle:{color:"black",fontName:"Roboto, Arial",fontSize:12},showTextEvery:2,minTextSpacing:1},width:1400,height:600},o=new google.visualization.ColumnChart(document.getElementById("chart_div"));o.draw(t,e)}google.charts.load("current",{packages:["corechart"]}),google.charts.setOnLoadCallback(drawChart)</script></head><body><div id="chart_div"></div><div id="chart_png"></div></body></html>
-"@
+            $MinifiedChartCode = '<html><head><link href="https://fonts.googleapis.com/css?family=Roboto" rel="stylesheet"><script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script><script type="text/javascript">function drawChart(){var t=new google.visualization.DataTable;t.addColumn("date","Date"),t.addColumn("number","Temperature"),t.addColumn({type:"string",role:"style"}),t.addRows(["%%fragment%%"]);var e={title:"Temperature Trend %%period%%",titleTextStyle:{fontName:"Roboto",fontSize:18},tooltip:{textStyle:{color:"black",fontName:"Roboto, Arial",fontSize:"12"}},chartArea:{left:"5%",top:100,width:"90%",height:400},legend:"none",animation:{duration:700,easing:"out",startup:!0},bar:{groupWidth:"91.2%"},vAxis:{minValue:0,gridlines:{color:"transparent"},textStyle:{color:"black",fontName:"Roboto, Arial",fontSize:14}},hAxis:{format:"MMM dd",gridlines:{count:31,color:"transparent"},textStyle:{color:"black",fontName:"Roboto, Arial",fontSize:12},showTextEvery:2,minTextSpacing:1},width:1400,height:600},o=new google.visualization.ColumnChart(document.getElementById("chart_div"));o.draw(t,e)}google.charts.load("current",{packages:["corechart"]}),google.charts.setOnLoadCallback(drawChart)</script></head><body><div id="chart_div"></div><div id="chart_png"></div></body></html>'
+            
             # Change the template's placeholders with the historical data.
             $Html = $MinifiedChartCode.Replace('"%%fragment%%"', $String).Replace('%%period%%', " - $ZoneName - $($StartDate.ToShortDateString()) - $($EndDate.ToShortDateString())" )
 
@@ -1645,6 +1645,28 @@ Class Hive {
             Return $true
         }
         Else {Return $false}
+    }
+
+    # Get the state of the hot water (of on or off)
+    [bool] GetHotWaterState([string] $ZoneName) {
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+
+        # Update nodes data
+        $this.Products = $this.GetProducts()
+        $this.Devices = $this.GetDevices()
+
+        If (($this.Products | Where-Object {$_.type -eq "hotwater" -and $_.state.name -eq $ZoneName}).Count -is [int]) { $this.ReturnError("No hot water zones matching the name provided: `"$ZoneName`" were found.") }
+        
+        $Hotwater = $this.Products | Where-Object {$_.type -eq "hotwater" -and $_.state.name -eq $ZoneName}
+        
+        $Value = $null
+
+        Switch ($Hotwater.state.status) {
+            "ON" { $Value =  $true }
+            "OFF" { $Value = $false }
+        }
+
+        Return $Value
     }
 
     <#
