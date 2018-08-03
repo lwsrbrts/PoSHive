@@ -55,7 +55,7 @@ Class Hive {
     [ValidateLength(4, 100)][string] $Username
     [securestring] $Password
     [string] $ApiSessionId
-    hidden [string] $Agent = 'PoSHive 2.4.1 - github.com-lwsrbrts-PoSHive'
+    hidden [string] $Agent = 'PoSHive 2.4.2 - github.com-lwsrbrts-PoSHive'
     [psobject] $User
     [psobject] $Devices
     [psobject] $Products
@@ -1662,7 +1662,7 @@ Class Hive {
         $Value = $null
 
         Switch ($Hotwater.state.status) {
-            "ON" { $Value =  $true }
+            "ON" { $Value = $true }
             "OFF" { $Value = $false }
         }
 
@@ -2329,6 +2329,61 @@ Class Hive {
         Else { Return $false }
     }
 
+    <#
+        Get Actions data
+    #>
+    [psobject] GetActions() {
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        Try {
+            $Response = Invoke-RestMethod -Method Get -Uri "$($this.ApiUrl)/actions" -Headers $this.Headers -ErrorAction Stop
+            Return $Response
+        }
+        Catch {
+            $this.ReturnError($_)
+            Return $null
+        }
+    }
+
+    <#
+        Get Actions data as a list
+    #>
+    [psobject] GetActionsList() {
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        Try {
+            $Response = $this.GetActions()
+
+            $Object = Foreach ($Action in $Response) {
+                $Property = [ordered]@{
+                    Id      = $Action.id
+                    Name    = $Action.name
+                    Enabled = $Action.enabled
+                }
+                # Create the new object.
+                New-Object -TypeName PSObject -Property $Property
+            }
+    
+            Return $Object
+        }
+        Catch {
+            $this.ReturnError($_)
+            Return $null
+        }
+    }
+
+    <#
+        Get Actions data
+    #>
+    [psobject] InvokeAction([guid]$id) {
+        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        Try {
+            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/actions/$id/quick-action" -Headers $this.Headers -ErrorAction Stop
+            Return $Response
+        }
+        Catch {
+            $this.ReturnError($_)
+            Return $null
+        }
+    }
 
     # END HIVE CLASS
 }    
