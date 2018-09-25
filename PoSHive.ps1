@@ -55,7 +55,7 @@ Class Hive {
     [ValidateLength(4, 100)][string] $Username
     [securestring] $Password
     [string] $ApiSessionId
-    hidden [string] $Agent = 'PoSHive 2.4.2 - github.com-lwsrbrts-PoSHive'
+    hidden [string] $Agent = 'PoSHive 2.5.0 - github.com-lwsrbrts-PoSHive'
     [psobject] $User
     [psobject] $Devices
     [psobject] $Products
@@ -218,7 +218,7 @@ Class Hive {
             $this.Products = $this.GetProducts()
             $this.Devices = $this.GetDevices()
 
-            If (($this.Products | Where-Object {$_.type -eq "heating"}).Count -is [int]) { $this.ReturnError('There is more than one product of type "heating". Please identify which heating zone by providing the zone name.') }
+            If (($this.Products | Where-Object {$_.type -eq "heating"}).id.Count -gt 1) { $this.ReturnError('There is more than one product of type "heating". Please identify which heating zone by providing the zone name.') }
 
             $HeatingNode = $this.Products | Where-Object {$_.type -eq "heating"}
 
@@ -244,11 +244,11 @@ Class Hive {
         Try {
             $this.Products = $this.GetProducts()
             $this.Devices = $this.GetDevices()
-
-            If (($this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}).Count -is [int]) { $this.ReturnError("No heating zones matching the name provided: `"$ZoneName`" were found.") }
             
             # Find out the correct node to send the command to. Only the first heating node returned.
             $HeatingNode = $this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}
+
+            If ($HeatingNode -isnot [object]) { $this.ReturnError("No heating zones matching the name provided: `"$ZoneName`" were found.") }
 
             $Temperature = [Math]::Round([double]$HeatingNode.props.temperature, 1)
 
@@ -274,10 +274,12 @@ Class Hive {
         $this.Products = $this.GetProducts()
         $this.Devices = $this.GetDevices()
 
-        If (($this.Products | Where-Object {$_.type -eq "heating"}).Count -is [int]) { $this.ReturnError('There is more than one product of type "heating". Please identify which heating zone by providing the zone name.') }
+        If (($this.Products | Where-Object {$_.type -eq "heating"}).id.Count -gt 1) { $this.ReturnError('There is more than one product of type "heating". Please identify which heating zone by providing the zone name.') }
         
         # Find out the correct node to send the temp to. Only the first Thermostat we find!
         $Thermostat = $this.Products | Where-Object {$_.type -eq "heating"} | Select-Object -First 1
+
+        If ($Thermostat -isnot [object]) { $this.ReturnError("No heating zones were found.") }
 
         $Settings = [psobject]@{
             mode = $Mode.ToString()
@@ -305,11 +307,11 @@ Class Hive {
         # Update nodes
         $this.Products = $this.GetProducts()
         $this.Devices = $this.GetDevices()
-
-        If (($this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}).Count -is [int]) { $this.ReturnError("No heating zones matching the name provided: `"$ZoneName`" were found.") }
-        
+    
         # Find out the correct node to send the command to by using its name.
         $Thermostat = $this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}
+
+        If ($Thermostat -isnot [object]) { $this.ReturnError("No heating zones matching the name provided: `"$ZoneName`" were found.") }
 
         $Settings = [psobject]@{
             mode = $Mode.ToString()
@@ -340,10 +342,12 @@ Class Hive {
         $this.Products = $this.GetProducts()
         $this.Devices = $this.GetDevices()
 
-        If (($this.Products | Where-Object {$_.type -eq "heating"}).Count -is [int]) { $this.ReturnError('There is more than one product of type "heating". Please identify which heating zone by providing the zone name.') }
+        If (($this.Products | Where-Object {$_.type -eq "heating"}).idCount -gt 1) { $this.ReturnError('There is more than one product of type "heating". Please identify which heating zone by providing the zone name.') }
         
         # Find out the correct node to send the commands to.
         $Thermostat = $this.Products | Where-Object {$_.type -eq "heating"} | Select-Object -First 1
+
+        If ($Thermostat -isnot [object]) { $this.ReturnError("No heating zones were found.") }
 
         # Check the heating is not in OFF state
         If ($Thermostat.state.mode -eq 'OFF') {
@@ -378,11 +382,11 @@ Class Hive {
         # Update nodes
         $this.Products = $this.GetProducts()
         $this.Devices = $this.GetDevices()
-
-        If (($this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}).Count -is [int]) { $this.ReturnError("No heating zones matching the name provided: `"$ZoneName`" were found.") }
-        
+       
         # Find out the correct node to send the commands to.
         $Thermostat = $this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}
+
+        If ($Thermostat -isnot [object]) { $this.ReturnError("No heating zones matching the name provided: `"$ZoneName`" were found.") }
 
         # Check the heating is not in OFF state
         If ($Thermostat.state.mode -eq 'OFF') {
@@ -419,10 +423,12 @@ Class Hive {
         $this.Products = $this.GetProducts()
         $this.Devices = $this.GetDevices()
 
-        If (($this.Products | Where-Object {$_.type -eq "heating"}).Count -is [int]) { $this.ReturnError('There is more than one product of type "heating". Please identify which heating zone by providing the zone name.') }
+        If (($this.Products | Where-Object {$_.type -eq "heating"}).id.Count -gt 1) { $this.ReturnError('There is more than one product of type "heating". Please identify which heating zone by providing the zone name.') }
         
         # Find out the correct node to send the commands to.
         $Thermostat = $this.Products | Where-Object {$_.type -eq "heating"} | Select-Object -First 1
+
+        If ($Thermostat -isnot [object]) { $this.ReturnError("No heating zones were found.") }
 
         $ApiDuration = $null # Creating so it's there!
         $ApiTemperature = 22 # This is the same Boost default temp as the Hive site.
@@ -467,11 +473,11 @@ Class Hive {
         # Update nodes
         $this.Products = $this.GetProducts()
         $this.Devices = $this.GetDevices()
-
-        If (($this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}).Count -is [int]) { $this.ReturnError("No heating zones matching the name provided: `"$ZoneName`" were found.") }
         
         # Find out the correct node to send the commands to.
         $Thermostat = $this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}
+
+        If ($Thermostat -isnot [object]) { $this.ReturnError("No heating zones matching the name provided: `"$ZoneName`" were found.") }
 
         $ApiDuration = $null # Creating so it's there!
         $ApiTemperature = 22 # This is the same Boost default temp as the Hive site.
@@ -518,10 +524,12 @@ Class Hive {
         $this.Products = $this.GetProducts()
         $this.Devices = $this.GetDevices()
 
-        If (($this.Products | Where-Object {$_.type -eq "heating"}).Count -is [int]) { $this.ReturnError('There is more than one product of type "heating". Please identify which heating zone by providing the zone name.') }
+        If (($this.Products | Where-Object {$_.type -eq "heating"}).id.Count -gt 1) { $this.ReturnError('There is more than one product of type "heating". Please identify which heating zone by providing the zone name.') }
         
         # Find out the correct node to send the commands to.
         $Thermostat = $this.Products | Where-Object {$_.type -eq "heating"} | Select-Object -First 1
+
+        If ($Thermostat -isnot [object]) { $this.ReturnError("No heating zones were found.") }
 
         # If the system isn't set to BOOST, return without doing anything.
         If ($Thermostat.state.mode -ne 'BOOST') {
@@ -555,11 +563,11 @@ Class Hive {
         # Update nodes
         $this.Products = $this.GetProducts()
         $this.Devices = $this.GetDevices()
-
-        If (($this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}).Count -is [int]) { $this.ReturnError("No heating zones matching the name provided: `"$ZoneName`" were found.") }
-        
+       
         # Find out the correct node to send the commands to.
         $Thermostat = $this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}
+
+        If ($Thermostat -isnot [object]) { $this.ReturnError("No heating zones matching the name provided: `"$ZoneName`" were found.") }
 
         # If the system isn't set to BOOST, return without doing anything.
         If ($Thermostat.state.mode -ne 'BOOST') {
@@ -734,10 +742,12 @@ Class Hive {
         $this.Products = $this.GetProducts()
         $this.Devices = $this.GetDevices()
 
-        If (($this.Products | Where-Object {$_.type -eq "heating"}).Count -is [int]) { $this.ReturnError('There is more than one product of type "heating". Please identify which heating zone by providing the zone name.') }
+        If (($this.Products | Where-Object {$_.type -eq "heating"}).id.Count -gt 1) { $this.ReturnError('There is more than one product of type "heating". Please identify which heating zone by providing the zone name.') }
         
         # Find out the correct node to send the commands to.
         $Thermostat = $this.Products | Where-Object {$_.type -eq "heating"} | Select-Object -First 1
+
+        If ($Thermostat -isnot [object]) { $this.ReturnError("No heating zones were found.") }
 
         # Create the correct json structure.
         $Settings = [psobject]@{
@@ -769,11 +779,11 @@ Class Hive {
         # Update nodes data
         $this.Products = $this.GetProducts()
         $this.Devices = $this.GetDevices()
-
-        If (($this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}).Count -is [int]) { $this.ReturnError("No heating zones matching the name provided: `"$ZoneName`" were found.") }
-        
+       
         # Find out the correct node to send the commands to.
         $Thermostat = $this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}
+
+        If ($Thermostat -isnot [object]) { $this.ReturnError("No heating zones matching the name provided: `"$ZoneName`" were found.") }
 
         # Create the correct json structure.
         $Settings = [psobject]@{
@@ -806,10 +816,12 @@ Class Hive {
         $this.Products = $this.GetProducts()
         $this.Devices = $this.GetDevices()
 
-        If (($this.Products | Where-Object {$_.type -eq "heating"}).Count -is [int]) { $this.ReturnError('There is more than one product of type "heating". Please identify which heating zone by providing the zone name.') }
+        If (($this.Products | Where-Object {$_.type -eq "heating"}).id.Count -gt 1) { $this.ReturnError('There is more than one product of type "heating". Please identify which heating zone by providing the zone name.') }
         
         # Find out the correct node to send the commands to.
         $Thermostat = $this.Products | Where-Object {$_.type -eq "heating"} | Select-Object -First 1
+
+        If ($Thermostat -isnot [object]) { $this.ReturnError("No heating zones were found.") }
 
         $Settings = $null
         
@@ -845,11 +857,11 @@ Class Hive {
         # Update nodes data
         $this.Products = $this.GetProducts()
         $this.Devices = $this.GetDevices()
-
-        If (($this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}).Count -is [int]) { $this.ReturnError("No heating zones matching the name provided: `"$ZoneName`" were found.") }
         
         # Find out the correct node to send the commands to.
         $Thermostat = $this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}
+
+        If ($Thermostat -isnot [object]) { $this.ReturnError("No heating zones matching the name provided: `"$ZoneName`" were found.") }
 
         $Settings = $null
         
@@ -887,10 +899,12 @@ Class Hive {
         $this.Products = $this.GetProducts()
         $this.Devices = $this.GetDevices()
 
-        If (($this.Products | Where-Object {$_.type -eq "heating"}).Count -is [int]) { $this.ReturnError('There is more than one product of type "heating". Please identify which heating zone by providing the zone name.') }
+        If (($this.Products | Where-Object {$_.type -eq "heating"}).id.Count -gt 1) { $this.ReturnError('There is more than one product of type "heating". Please identify which heating zone by providing the zone name.') }
         
         # Find out the correct node to send the temp to. Only the first Thermostat we find!
         $Thermostat = $this.Products | Where-Object {$_.type -eq "heating"} | Select-Object -First 1
+
+        If ($Thermostat -isnot [object]) { $this.ReturnError("No heating zones were found.") }
 
         # Check the heating is in SCHEDULE mode.
         If (-not ($Thermostat.state.mode -eq 'SCHEDULE')) {
@@ -939,11 +953,11 @@ Class Hive {
         # Update nodes data
         $this.Products = $this.GetProducts()
         $this.Devices = $this.GetDevices()
-
-        If (($this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}).Count -is [int]) { $this.ReturnError("No heating zones matching the name provided: `"$ZoneName`" were found.") }
-        
+      
         # Find out the correct node to send the commands to.
         $Thermostat = $this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}
+
+        If ($Thermostat -isnot [object]) { $this.ReturnError("No heating zones matching the name provided: `"$ZoneName`" were found.") }
 
         # Check the heating is in SCHEDULE mode.
         If (-not ($Thermostat.state.mode -eq 'SCHEDULE')) {
@@ -1213,11 +1227,11 @@ Class Hive {
         # Update nodes
         $this.Products = $this.GetProducts()
         $this.Devices = $this.GetDevices()
-
-        If (($this.Products | Where-Object {$_.type -eq "hotwater"}).Count -is [int]) { $this.ReturnError('There is no hot water device attached to this system.') }
         
         # Find out the correct node to send the commands to.
         $HotWater = $this.Products | Where-Object {$_.type -eq "hotwater"} | Select-Object -First 1
+
+        If ($HotWater -isnot [object]) { $this.ReturnError("There is no hot water device attached to this system.") }
 
         $Settings = [psobject]@{
             mode = $Mode.ToString()
@@ -1242,11 +1256,11 @@ Class Hive {
         # Update nodes
         $this.Products = $this.GetProducts()
         $this.Devices = $this.GetDevices()
-
-        If (($this.Products | Where-Object {$_.type -eq "hotwater"}).Count -is [int]) { $this.ReturnError('There is no hot water device attached to this system.') }
-        
+       
         # Find out the correct node to send the commands to.
         $HotWater = $this.Products | Where-Object {$_.type -eq "hotwater"} | Select-Object -First 1
+
+        If ($HotWater -isnot [object]) { $this.ReturnError("There is no hot water device attached to this system.") }
 
         $ApiDuration = $null # Creating so it's there!
 
@@ -1285,11 +1299,11 @@ Class Hive {
         # Update nodes
         $this.Products = $this.GetProducts()
         $this.Devices = $this.GetDevices()
-
-        If (($this.Products | Where-Object {$_.type -eq "hotwater"}).Count -is [int]) { $this.ReturnError('There is no hot water device attached to this system.') }
         
         # Find out the correct node to send the commands to.
         $HotWater = $this.Products | Where-Object {$_.type -eq "hotwater"} | Select-Object -First 1
+
+        If ($HotWater -isnot [object]) { $this.ReturnError("There is no hot water device attached to this system.") }
 
         # If the system isn't set to BOOST, return without doing anything.
         If ($HotWater.state.mode -ne 'BOOST') {
@@ -1316,11 +1330,11 @@ Class Hive {
         # Update nodes data
         $this.Products = $this.GetProducts()
         $this.Devices = $this.GetDevices()
-
-        If (($this.Products | Where-Object {$_.type -eq "hotwater"}).Count -is [int]) { $this.ReturnError('There is no hot water device attached to this system.') }
-        
+      
         # Find out the correct node to send the commands to.
         $HotWater = $this.Products | Where-Object {$_.type -eq "hotwater"} | Select-Object -First 1
+
+        If ($HotWater -isnot [object]) { $this.ReturnError("There is no hot water device attached to this system.") }
 
         # Create the correct json structure.
         $Settings = [psobject]@{
@@ -1351,11 +1365,11 @@ Class Hive {
         # Update nodes data
         $this.Products = $this.GetProducts()
         $this.Devices = $this.GetDevices()
-
-        If (($this.Products | Where-Object {$_.type -eq "hotwater"}).Count -is [int]) { $this.ReturnError('There is no hot water device attached to this system.') }
         
         # Find out the correct node to send the commands to.
         $HotWater = $this.Products | Where-Object {$_.type -eq "hotwater"} | Select-Object -First 1
+
+        If ($HotWater -isnot [object]) { $this.ReturnError("There is no hot water device attached to this system.") }
 
         $Settings = $null
         
@@ -1389,11 +1403,11 @@ Class Hive {
         Try {
             $this.Products = $this.GetProducts()
             $this.Devices = $this.GetDevices()
-
-            If (($this.Products | Where-Object {$_.type -eq "motionsensor" -and $_.state.name -eq $SensorName}).Count -is [int]) { $this.ReturnError("No motion sensor matching the name provided: `"$SensorName`" was found.") }
             
             # Find out the correct motion sensor node to obtain the state of.
             $SensorNode = $this.Products | Where-Object {$_.type -eq "motionsensor" -and $_.state.name -eq $SensorName}
+
+            If ($SensorNode -isnot [object]) { $this.ReturnError("No motion sensor matching the name provided: `"$SensorName`" was found.") }
 
             $Response = $null
 
@@ -1450,11 +1464,11 @@ Class Hive {
         Try {
             $this.Products = $this.GetProducts()
             $this.Devices = $this.GetDevices()
-
-            If (($this.Products | Where-Object {$_.type -eq "contactsensor" -and $_.state.name -eq $SensorName}).Count -is [int]) { $this.ReturnError("No contact sensor matching the name provided: `"$SensorName`" was found.") }
-            
+           
             # Find out the correct contact sensor node to obtain the state of.
             $SensorNode = $this.Products | Where-Object {$_.type -eq "contactsensor" -and $_.state.name -eq $SensorName}
+
+            If ($SensorNode -isnot [object]) { $this.ReturnError("No contact sensor matching the name provided: `"$SensorName`" was found.") }
 
             $Response = $null # Declare variable
 
@@ -1509,11 +1523,11 @@ Class Hive {
         Try {
             $this.Products = $this.GetProducts()
             $this.Devices = $this.GetDevices()
-
-            If (($this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}).Count -is [int]) { $this.ReturnError("No heating zones matching the name provided: `"$ZoneName`" were found.") }
             
             # Find out the correct node to obtain the history for.
             $HeatingNode = $this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}
+
+            If ($HeatingNode -isnot [object]) { $this.ReturnError("No heating zones matching the name provided: `"$ZoneName`" were found.") }
 
             Try {
                 $Response = Invoke-RestMethod -Method Get -Uri "$($this.ApiUrl)/history/heating/$($HeatingNode.id)?start=$($this.DateTimeToUnixTimestamp($StartDate))&end=$($this.DateTimeToUnixTimestamp($EndDate))&timeUnit=DAYS&rate=1&operation=AVG" -Headers $this.Headers
@@ -1635,11 +1649,11 @@ Class Hive {
         # Update nodes data
         $this.Products = $this.GetProducts()
         $this.Devices = $this.GetDevices()
-
-        If (($this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}).Count -is [int]) { $this.ReturnError("No heating zones matching the name provided: `"$ZoneName`" were found.") }
-        
+       
         # Find out the correct node to send the commands to.
         $Thermostat = $this.Products | Where-Object {$_.type -eq "heating" -and $_.state.name -eq $ZoneName}
+
+        If ($Thermostat -isnot [object]) { $this.ReturnError("No heating zones matching the name provided: `"$ZoneName`" were found.") }
 
         If ($Thermostat.props.temperature -lt $Thermostat.state.target) {
             Return $true
@@ -1654,10 +1668,10 @@ Class Hive {
         # Update nodes data
         $this.Products = $this.GetProducts()
         $this.Devices = $this.GetDevices()
-
-        If (($this.Products | Where-Object {$_.type -eq "hotwater" -and $_.state.name -eq $ZoneName}).Count -is [int]) { $this.ReturnError("No hot water zones matching the name provided: `"$ZoneName`" were found.") }
-        
+       
         $Hotwater = $this.Products | Where-Object {$_.type -eq "hotwater" -and $_.state.name -eq $ZoneName}
+
+        If ($Hotwater -isnot [object]) { $this.ReturnError("No hot water zone matching the name provided: `"$ZoneName`" were found.") }
         
         $Value = $null
 
