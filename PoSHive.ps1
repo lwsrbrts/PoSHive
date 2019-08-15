@@ -106,6 +106,15 @@ Class Hive {
     }
     #>
 
+    hidden [void] ResolvePs51HttpsCompatibility() {
+        $PSVersion = $global:PSVersionTable.PSVersion.Major
+        If (([System.Environment]::OSVersion.Platform -eq 'Win32NT') -and ($PSVersion -lt 6)) {
+            Add-Type -TypeDefinition "using System.Net; using System.Security.Cryptography.X509Certificates; public class TrustAllCertsPolicy : ICertificatePolicy { public bool CheckValidationResult(ServicePoint srvPoint, X509Certificate certificate, WebRequest request, int certificateProblem) {return true;} }"
+            [System.Net.ServicePointManager]::CertificatePolicy = New-Object TrustAllCertsPolicy
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 # Force use of TLS 1.2
+        }
+    }
+
     # Return errors and terminate execution 
     hidden [void] ReturnError([string] $e) {
         Write-Error $e -ErrorAction Stop
@@ -119,6 +128,8 @@ Class Hive {
     # Login - could do this in the constructor but makes sense to have it as a separate method. May only want weather!
     [void] Login () {
         If ($this.ApiSessionId) {$this.ReturnError("You are already logged in.")}
+
+        $this.ResolvePs51HttpsCompatibility()
 
         $Settings = [psobject]@{
             username = $this.Username
