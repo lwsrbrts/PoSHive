@@ -1,3 +1,5 @@
+**30th September 2020** - British Gas have implemented Secure Remote Password authentication for all logons which basically means the method of authenticating with the API that I am using no longer works which, for all intents and purposes completely breaks this module. In the absence of any understanding of SRP, I'm afraid that means the module is basically dead.
+
 # PoSHive
 
 A PowerShell class (supporting Windows PowerShell 5.1 or PowerShell Core 6.0+) to control your British Gas Hive system including the heating, hot water, multi zone, active plugs,  sensors and colour bulbs.
