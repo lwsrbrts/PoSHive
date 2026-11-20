@@ -1,3 +1,12 @@
+# PoSHive v3 - British Gas Hive control module (PowerShell 7+).
+# Sign-in uses AWS Cognito SRP + SMS OTP (see private/AuthFlow.ps1).
+# The class Hive below is the data-plane API; the Connect-Hive family in
+# public/ owns authentication and the ~/.poshive token cache.
+
+$script:PoSHiveRoot = $PSScriptRoot
+ForEach ($file In (Get-ChildItem -LiteralPath "$script:PoSHiveRoot" -Filter '*.ps1' -Recurse | Where-Object { $_.FullName -match '\\(private|public)\\' } | Sort-Object { $_.FullName -match '\\public\\' })) {
+    . $file.FullName
+}
 Enum HeatingMode {
     <# Defines the heating modes that can be set. #>
     SCHEDULE
@@ -51,25 +60,26 @@ Class Hive {
     # PROPERTIES #
     ##############
 
-    [uri]$ApiUrl = "https://beekeeper.hivehome.com/1.0/global/login" # This is the global login URL - changes after login.
-    [ValidateLength(4, 100)][string] $Username
+    # v3: base for data-API URLs (kept for URL construction; requests go
+    # through Invoke-HiveApiRequest which owns the real host selection).
+    [uri]$ApiUrl = "https://beekeeper.hivehome.com/1.0"
+    [string] $Username
     [securestring] $Password
-    [string] $ApiSessionId
-    hidden [string] $Agent = 'PoSHive 2.5.0 - github.com-lwsrbrts-PoSHive'
+    # v3: auth state populated by Login()/Connect-Hive: IdToken/AccessToken/
+    # RefreshToken + a Refresh scriptblock for silent 401 recovery.
+    hidden [hashtable] $Auth
+    hidden [string] $Agent = 'PoSHive 3.0.0 - github.com-lwsrbrts-PoSHive'
     [psobject] $User
     [psobject] $Devices
     [psobject] $Products
     hidden [datetime] $LoginTime
-    hidden [hashtable] $Headers = @{
-        'Accept'       = '*/*'
-        'User-Agent'   = $this.Agent
-        'Content-Type' = 'application/json'
-    }
-    hidden [int] $SessionWarnTime = 30
+    hidden [int] $SessionWarnTime = 60
     
     ###############
     # CONSTRUCTOR #
     ###############
+
+    Hive() { }
 
     Hive([string] $Username, [string] $Password) {
         $this.Username = $Username
@@ -106,14 +116,6 @@ Class Hive {
     }
     #>
 
-    hidden [void] ResolvePs51HttpsCompatibility() {
-        $PSVersion = $global:PSVersionTable.PSVersion.Major
-        If (([System.Environment]::OSVersion.Platform -eq 'Win32NT') -and ($PSVersion -lt 6)) {
-            Add-Type -TypeDefinition "using System.Net; using System.Security.Cryptography.X509Certificates; public class TrustAllCertsPolicy : ICertificatePolicy { public bool CheckValidationResult(ServicePoint srvPoint, X509Certificate certificate, WebRequest request, int certificateProblem) {return true;} }"
-            [System.Net.ServicePointManager]::CertificatePolicy = New-Object TrustAllCertsPolicy
-            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 # Force use of TLS 1.2
-        }
-    }
 
     # Return errors and terminate execution 
     hidden [void] ReturnError([string] $e) {
@@ -125,59 +127,80 @@ Class Hive {
         Write-Warning $e
     }
 
-    # Login - could do this in the constructor but makes sense to have it as a separate method. May only want weather!
+    # Login - authenticates via the v3 engine (Connect-Hive: cached tokens ->
+    # refresh -> remembered device -> fresh SRP + SMS OTP). The interactive
+    # OTP prompt (or -Otp parking) is handled inside Connect-Hive.
+    # With no arguments the cached session for this machine is reused (no
+    # credentials needed if a device/token is already cached).
     [void] Login () {
-        If ($this.ApiSessionId) {$this.ReturnError("You are already logged in.")}
-
-        $this.ResolvePs51HttpsCompatibility()
-
-        $Settings = [psobject]@{
-            username = $this.Username
-            password = ($this.DecryptSecureString($this.Password))
-            devices  = $true
-            products = $true
-        }
+        If ($this.Auth) {$this.ReturnError("You are already logged in.")}
 
         Try {
-            $Response = Invoke-RestMethod -Method Post -Uri $this.ApiUrl -Body (ConvertTo-Json $Settings) -Headers $this.Headers -ErrorAction Stop
-            $this.ApiSessionId = $Response.token
-            $this.Headers.Add('Authorization', $this.ApiSessionId)
-            $this.ApiUrl = $Response.platform.endpoint
-            $this.Devices = $Response.devices
-            $this.Products = $Response.products
-            $this.User = $Response.user
-            $this.LoginTime = (Get-Date)
-        }
-        Catch {
-            $this.ReturnError($_)
-        }
-    }
-
-    # Log out - essentially deletes the ApiSession from the API and nulls the ApiSessionId
-    [psobject] Logout() {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
-        Try {
-            $Response = Invoke-RestMethod -Method Delete -Uri "$($this.ApiUrl)/auth/logout" -Headers $this.Headers -ErrorAction Stop
-            Return "Logged out successfully."
-        }
-        Catch [System.Net.WebException] {
-            If ($_.Exception.Response.StatusCode.value__ -eq 401) {
-                $Message = "Your session was not found on the remote server but your local session was reset.`n$($_.Exception.Message)"
+            $credential = $null
+            If ($this.Username) { $credential = [pscredential]::new($this.Username, $this.Password) }
+            If ($credential) { $result = Connect-Hive -Credential $credential } Else { $result = Connect-Hive }
+            If ($result.Status -ne 'Connected') {
+                $this.ReturnError("Hive login did not complete: $($result.Message)")
+                Return
             }
-            Else { $Message = "An error occurred when communicating with the remote server. Your session was reset.`n$($_.Exception.Message)" }
-            Return $Message 
+
+            # Pull the (cached) tokens into this instance's auth state.
+            $cachePath = Get-HiveCachePath
+            $device = Get-HiveCachedDevice -Path $cachePath -Username $this.Username
+            If (-not $device) { $this.ReturnError("Login succeeded but the token cache could not be read; rerun Connect-Hive.") ; Return }
+
+            $this.Auth = @{
+                IdToken      = $device['IdToken']
+                AccessToken  = $device['AccessToken']
+                RefreshToken = $device['RefreshToken']
+            }
+            $authRef = $this.Auth
+            $usernameRef = $this.Username
+            $refresh = {
+                $cache = Get-HiveCachedDevice -Path $cachePath -Username $usernameRef
+                If (-not $cache -or -not $cache['RefreshToken']) { throw 'HiveNoRefreshToken: rerun Connect-Hive.' }
+                $endpoints = if ($cache['PoolId']) { @{ PoolId = $cache['PoolId']; ClientId = $cache['ClientId'] } } else { Get-HiveCognitoEndpoints }
+                $region = Get-HiveRegionFromPoolId $endpoints.PoolId
+                $newAuth = Connect-HiveByRefresh -Region $region -ClientId $endpoints.ClientId -Device $cache
+                Set-HiveCachedDevice -Path $cachePath -Device (Update-HiveDeviceFromAuth -Device $cache -AuthResult $newAuth)
+                $authRef['IdToken'] = $newAuth.IdToken
+                $authRef['AccessToken'] = $newAuth.AccessToken
+            }.GetNewClosure()
+            $this.Auth['Refresh'] = $refresh
+            $this.LoginTime = (Get-Date)
+
+            # Best effort profile load (GetWeather uses postcode/countryCode).
+            # Note: /global/user was retired by Hive; /nodes/all carries the
+            # same user record alongside products/devices/actions.
+            Try {
+                $all = Invoke-HiveApiRequest -Auth $this.Auth -Method Get -Uri '/nodes/all?products=true&devices=true&actions=true'
+                $this.User = $all.user
+            }
+            Catch {
+                $this.ReturnWarning("Logged in, but the user profile could not be loaded ($($_.Exception.Message)). GetWeather() may not work without explicit postcode arguments.")
+            }
         }
         Catch {
-            $Message = "An error occurred when communicating with the remote server. Your session was reset.`n$($_.Exception.Message)"
-            Return $Message
-        }
-        Finally {
-            $this.ApiSessionId = $null
-            $this.Headers.Remove('Authorization')
-            $this.ApiUrl = "https://beekeeper.hivehome.com/1.0/global/login" # Reset the login URL.
+            $this.ReturnError($_.Exception.Message)
         }
     }
 
+    # Convenience overload: authenticate with an explicit PSCredential.
+    [void] Login ([pscredential] $Credential) {
+        $this.Username = $Credential.GetNetworkCredential().UserName
+        $this.Password = $Credential.Password
+        $this.Login()
+    }
+
+    # Log out - clears the local session (cached tokens remain, so the next
+    # Login can refresh silently). Use Disconnect-Hive -ForgetDevice to also
+    # unregister the device with Cognito.
+    [psobject] Logout() {
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
+        $null = Disconnect-Hive
+        $this.Auth = $null
+        Return "Logged out (local session cleared; cached tokens kept so reconnecting is silent)."
+    }
     <#
         Get products data.
         Still exposed as a usable method in the class but acts primarily
@@ -186,10 +209,10 @@ Class Hive {
         of an attribute.
     #>
     [psobject] GetProducts() {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
         If ((Get-Date) -gt ($this.LoginTime).AddMinutes($this.SessionWarnTime)) {$this.ReturnWarning("Your session has been active for over $($this.SessionWarnTime) minutes. Consider logging in again if your session requires it.")}
         Try {
-            $Response = Invoke-RestMethod -Method Get -Uri "$($this.ApiUrl)/products?after=" -Headers $this.Headers -ErrorAction Stop
+            $Response = Invoke-HiveApiRequest -Auth $this.Auth -Method Get -Uri "$($this.ApiUrl)/products?after="
             Return $Response
         }
         Catch {
@@ -206,9 +229,9 @@ Class Hive {
         of an attribute.
     #>
     [psobject] GetDevices() {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
         Try {
-            $Response = Invoke-RestMethod -Method Get -Uri "$($this.ApiUrl)/devices" -Headers $this.Headers -ErrorAction Stop
+            $Response = Invoke-HiveApiRequest -Auth $this.Auth -Method Get -Uri "$($this.ApiUrl)/devices"
             Return $Response
         }
         Catch {
@@ -224,7 +247,7 @@ Class Hive {
         Provide $false to get a simple decimal: eg. 21.1
     #>
     [psobject] GetTemperature([bool] $FormattedValue) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
         Try {
             $this.Products = $this.GetProducts()
             $this.Devices = $this.GetDevices()
@@ -251,7 +274,7 @@ Class Hive {
         Provide $false to get a simple decimal: eg. 21.1
     #>
     [psobject] GetTemperature([string] $ZoneName, [bool] $FormattedValue) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
         Try {
             $this.Products = $this.GetProducts()
             $this.Devices = $this.GetDevices()
@@ -279,7 +302,7 @@ Class Hive {
         single zone heating systems. For multi-zone use the overload and define the zone name as well.
     #>
     [psobject] SetHeatingMode([HeatingMode] $Mode) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
 
         # Update nodes
         $this.Products = $this.GetProducts()
@@ -298,7 +321,7 @@ Class Hive {
         If ($Mode -eq 'MANUAL') { $Settings.Add('target', 20) }
 
         Try {
-            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/heating/$($Thermostat.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+            $Response = Invoke-HiveApiRequest -Auth $this.Auth -Method Post -Uri "$($this.ApiUrl)/nodes/heating/$($Thermostat.id)" -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
             Return "Heating mode set to $($Mode.ToString()) successfully."
         }
         Catch {
@@ -313,7 +336,7 @@ Class Hive {
         This method identifies the thermostat/programmer to change by the zone name and it does support multi-zones.
     #>
     [psobject] SetHeatingMode([string] $ZoneName, [HeatingMode] $Mode) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
 
         # Update nodes
         $this.Products = $this.GetProducts()
@@ -330,7 +353,7 @@ Class Hive {
         If ($Mode -eq 'MANUAL') { $Settings.Add('target', 20) }
 
         Try {
-            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/heating/$($Thermostat.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+            $Response = Invoke-HiveApiRequest -Auth $this.Auth -Method Post -Uri "$($this.ApiUrl)/nodes/heating/$($Thermostat.id)" -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
             Return "Heating mode set to $($Mode.ToString()) successfully."
         }
         Catch {
@@ -344,7 +367,7 @@ Class Hive {
         $this.Products and $this.Devices is always refreshed prior to execution.
     #>
     [psobject] SetTemperature([double] $targetTemperature) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
         
         # Get a sensible temp from the input value rounded to nearest half degree
         $Temp = ([Math]::Round(($targetTemperature * 2), [System.MidpointRounding]::AwayFromZero) / 2)
@@ -371,7 +394,7 @@ Class Hive {
         }
 
         Try {
-            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/heating/$($Thermostat.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+            $Response = Invoke-HiveApiRequest -Auth $this.Auth -Method Post -Uri "$($this.ApiUrl)/nodes/heating/$($Thermostat.id)" -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
             Return "Desired temperature ($($targetTemperature.ToString())$([char] 176 )C) set successfully."
         }
         Catch {
@@ -385,7 +408,7 @@ Class Hive {
         $this.Products and $this.Devices is always refreshed prior to execution.
     #>
     [psobject] SetTemperature([string] $ZoneName, [double] $targetTemperature) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
         
         # Get a sensible temp from the input value rounded to nearest half degree
         $Temp = ([Math]::Round(($targetTemperature * 2), [System.MidpointRounding]::AwayFromZero) / 2)
@@ -410,7 +433,7 @@ Class Hive {
         }
 
         Try {
-            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/heating/$($Thermostat.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+            $Response = Invoke-HiveApiRequest -Auth $this.Auth -Method Post -Uri "$($this.ApiUrl)/nodes/heating/$($Thermostat.id)" -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
             Return "Desired temperature ($($targetTemperature.ToString())$([char] 176 )C) set successfully."
         }
         Catch {
@@ -428,7 +451,7 @@ Class Hive {
         This boosts only a single zone. For multi-zone systems, use the overload and define the zone name.
     #>
     [psobject] SetBoostMode([BoostTime] $Duration) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
         
         # Update nodes
         $this.Products = $this.GetProducts()
@@ -462,7 +485,7 @@ Class Hive {
         }
 
         Try {
-            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/heating/$($Thermostat.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+            $Response = Invoke-HiveApiRequest -Auth $this.Auth -Method Post -Uri "$($this.ApiUrl)/nodes/heating/$($Thermostat.id)" -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
             Return "Heating BOOST activated for $ApiDuration minutes at $($ApiTemperature.ToString())$([char] 176 )C"
         }
         Catch {
@@ -479,7 +502,7 @@ Class Hive {
         You can re-boost at any time but the timer starts again, obviously.
     #>
     [psobject] SetBoostMode([string] $ZoneName, [BoostTime] $Duration) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
         
         # Update nodes
         $this.Products = $this.GetProducts()
@@ -511,7 +534,7 @@ Class Hive {
         }
 
         Try {
-            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/heating/$($Thermostat.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+            $Response = Invoke-HiveApiRequest -Auth $this.Auth -Method Post -Uri "$($this.ApiUrl)/nodes/heating/$($Thermostat.id)" -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
             Return "Heating BOOST activated for $ApiDuration minutes at $($ApiTemperature.ToString())$([char] 176 )C in $ZoneName"
         }
         Catch {
@@ -529,7 +552,7 @@ Class Hive {
         canceling boost mode reverts to the scheduled value, not the overriden value.
     #>
     [string] CancelBoostMode() {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
         
         # Update nodes
         $this.Products = $this.GetProducts()
@@ -569,7 +592,7 @@ Class Hive {
         canceling boost mode reverts to the scheduled value, not the overriden value.
     #>
     [string] CancelBoostMode([string] $ZoneName) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
         
         # Update nodes
         $this.Products = $this.GetProducts()
@@ -604,9 +627,9 @@ Class Hive {
         Returns a string value for start and end dates.
     #>
     [string] GetHolidayMode() {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
         Try {
-            $Holiday = Invoke-RestMethod -Method Get -Uri "$($this.ApiUrl)/holiday-mode" -Headers $this.Headers -ErrorAction Stop
+            $Holiday = Invoke-HiveApiRequest -Auth $this.Auth -Method Get -Uri "$($this.ApiUrl)/holiday-mode"
         }
         Catch {
             $this.ReturnError($_)
@@ -637,7 +660,7 @@ Class Hive {
         while you're away.
     #>
     [string] SetHolidayMode([datetime] $StartDateTime, [datetime] $EndDateTime, [int] $Temperature) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
 
         # Ensure date times are correctly stated.
         If ($StartDateTime -lt (Get-Date)) {$this.ReturnError("Start date and time is in the past.")}
@@ -669,7 +692,7 @@ Class Hive {
         }
 
         Try {
-            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/holiday-mode" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+            $Response = Invoke-HiveApiRequest -Auth $this.Auth -Method Post -Uri "$($this.ApiUrl)/holiday-mode" -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
             Return "Holiday mode activated from $($StartDateTime.ToString()) -> $($EndDateTime.ToString()) @ $Temperature$([char]176)C."
         }
         Catch {
@@ -682,10 +705,10 @@ Class Hive {
         Cancels holiday mode. Sends the request whether holiday mode is enabled or not.
     #>
     [string] CancelHolidayMode() {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
         
         Try {
-            $Response = Invoke-RestMethod -Method Delete -Uri "$($this.ApiUrl)/holiday-mode" -Headers $this.Headers
+            $Response = Invoke-HiveApiRequest -Auth $this.Auth -Method Delete -Uri "$($this.ApiUrl)/holiday-mode"
             Return "Holiday mode cancelled."
         }
         Catch {
@@ -698,7 +721,7 @@ Class Hive {
         Get the current weather (temp, conditions) for the users' postcode location.
     #>
     [psobject] GetWeather() {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
         $Postcode = $this.User.postcode
         $Country = $this.User.countryCode
         
@@ -746,7 +769,7 @@ Class Hive {
         Specify a directory ONLY - the file will be named HiveSchedule-yyyyMMddHHmm.json
     #>
     [void] SaveHeatingScheduleToFile([System.IO.DirectoryInfo] $DirectoryPath) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
         If (-not $DirectoryPath.Exists) {$this.ReturnError("The path should already exist.")}
 
         # Update nodes data
@@ -784,7 +807,7 @@ Class Hive {
         Specify a directory ONLY - the file will be named HiveSchedule-yyyyMMddHHmm.json
     #>
     [void] SaveHeatingScheduleToFile([string] $ZoneName, [System.IO.DirectoryInfo] $DirectoryPath) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
         If (-not $DirectoryPath.Exists) {$this.ReturnError("The path should already exist.")}
 
         # Update nodes data
@@ -820,7 +843,7 @@ Class Hive {
         schedule first using SaveHeatingScheduleToFile().
     #>
     [string] SetHeatingScheduleFromFile([System.IO.FileInfo] $FilePath) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
         If (-not (Test-Path -Path $FilePath )) {$this.ReturnError("The file path supplied does not exist.")}
 
         # Update nodes data
@@ -847,7 +870,7 @@ Class Hive {
         # Seven days of events in the file?
         If (((($Settings.schedule).psobject.Members | Where-Object {$_.MemberType -eq 'NoteProperty'}).count) -eq 7) {
             Try {
-                $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/heating/$($Thermostat.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+                $Response = Invoke-HiveApiRequest -Auth $this.Auth -Method Post -Uri "$($this.ApiUrl)/nodes/heating/$($Thermostat.id)" -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
                 Return "Schedule set successfully from $FilePath"
             }
             Catch {
@@ -862,7 +885,7 @@ Class Hive {
         Set a named heating zone schedule from a saved schedule file.
     #>
     [string] SetHeatingScheduleFromFile([string] $ZoneName, [System.IO.FileInfo] $FilePath) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
         If (-not (Test-Path -Path $FilePath )) {$this.ReturnError("The file path supplied does not exist.")}
 
         # Update nodes data
@@ -887,7 +910,7 @@ Class Hive {
         # Seven days of events in the file?
         If (((($Settings.schedule).psobject.Members | Where-Object {$_.MemberType -eq 'NoteProperty'}).count) -eq 7) {
             Try {
-                $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/heating/$($Thermostat.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+                $Response = Invoke-HiveApiRequest -Auth $this.Auth -Method Post -Uri "$($this.ApiUrl)/nodes/heating/$($Thermostat.id)" -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
                 Return "Schedule set successfully from $FilePath"
             }
             Catch {
@@ -904,7 +927,7 @@ Class Hive {
         day's schedule is used.
     #>
     [string] SetHeatingAdvance() {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
 
         # Update nodes data
         $this.Products = $this.GetProducts()
@@ -959,7 +982,7 @@ Class Hive {
         day's schedule is used.
     #>
     [string] SetHeatingAdvance([string] $ZoneName) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
 
         # Update nodes data
         $this.Products = $this.GetProducts()
@@ -1023,7 +1046,7 @@ Class Hive {
         as there is no previous configuration setting on Active Plugs.
     #>
     [string] SetActivePlugMode([DeviceMode]$Mode, [string]$Name) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
 
         # Update nodes
         $this.Products = $this.GetProducts()
@@ -1051,7 +1074,7 @@ Class Hive {
         }
 
         Try {
-            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/activeplug/$($ActivePlug.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+            $Response = Invoke-HiveApiRequest -Auth $this.Auth -Method Post -Uri "$($this.ApiUrl)/nodes/activeplug/$($ActivePlug.id)" -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
         }
         Catch {
             $this.ReturnError($_)
@@ -1066,7 +1089,7 @@ Class Hive {
         Uses a boolean as opposed to a text value.
     #>
     [string] SetActivePlugState([bool]$State, [string]$Name) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
 
         # Update nodes
         $this.Products = $this.GetProducts()
@@ -1094,7 +1117,7 @@ Class Hive {
         }
 
         Try {
-            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/activeplug/$($ActivePlug.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+            $Response = Invoke-HiveApiRequest -Auth $this.Auth -Method Post -Uri "$($this.ApiUrl)/nodes/activeplug/$($ActivePlug.id)" -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
         }
         Catch {
             $this.ReturnError($_)
@@ -1109,7 +1132,7 @@ Class Hive {
         Specify a directory ONLY - the file will be named HiveActivePlugSchedule-yyyyMMddHHmm.json
     #>
     [void] SaveActivePlugScheduleToFile([System.IO.DirectoryInfo] $DirectoryPath, [string] $Name) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
         If (-not $DirectoryPath.Exists) {$this.ReturnError("The path should already exist.")}
 
         # Update nodes data
@@ -1146,7 +1169,7 @@ Class Hive {
         then upload it to all the other plugs identified by name.
     #>
     [string] SetActivePlugScheduleFromFile([System.IO.FileInfo] $FilePath, [string] $Name) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
         If (-not (Test-Path -Path $FilePath )) {$this.ReturnError("The file path supplied does not exist.")}
 
         # Update nodes data
@@ -1171,7 +1194,7 @@ Class Hive {
         # Seven days of events in the file?
         If (((($Settings.schedule).psobject.Members | Where-Object {$_.MemberType -eq 'NoteProperty'}).count) -eq 7) {
             Try {
-                $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/activeplug/$($ActivePlug.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+                $Response = Invoke-HiveApiRequest -Auth $this.Auth -Method Post -Uri "$($this.ApiUrl)/nodes/activeplug/$($ActivePlug.id)" -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
                 Return "$($ActivePlug.state.name) schedule set successfully from `"$FilePath`""
             }
             Catch {
@@ -1189,7 +1212,7 @@ Class Hive {
         the Active Plug can be turned off.
     #>
     [int] GetActivePlugPowerConsumption([string] $Name) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
 
         # Update nodes data
         $this.Products = $this.GetProducts()
@@ -1208,7 +1231,7 @@ Class Hive {
         Get Active Plug State - whether it is currently on or off.
     #>
     [bool] GetActivePlugState([string]$Name) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
 
         # Update nodes
         $this.Products = $this.GetProducts()
@@ -1233,7 +1256,7 @@ Class Hive {
         Set the Hot Water mode. Requires one of the following: OFF, MANUAL, SCHEDULE
     #>
     [psobject] SetHotWaterMode([HeatingMode] $Mode) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
 
         # Update nodes
         $this.Products = $this.GetProducts()
@@ -1249,7 +1272,7 @@ Class Hive {
         }
 
         Try {
-            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/hotwater/$($HotWater.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+            $Response = Invoke-HiveApiRequest -Auth $this.Auth -Method Post -Uri "$($this.ApiUrl)/nodes/hotwater/$($HotWater.id)" -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
             Return "Hot water mode set to $($Mode.ToString()) successfully."
         }
         Catch {
@@ -1262,7 +1285,7 @@ Class Hive {
         Hot water boost.
     #>
     [psobject] SetHotWaterBoostMode([BoostTime] $Duration) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
         
         # Update nodes
         $this.Products = $this.GetProducts()
@@ -1292,7 +1315,7 @@ Class Hive {
         }
 
         Try {
-            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/hotwater/$($HotWater.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+            $Response = Invoke-HiveApiRequest -Auth $this.Auth -Method Post -Uri "$($this.ApiUrl)/nodes/hotwater/$($HotWater.id)" -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
             Return "Hot water BOOST activated for $ApiDuration minutes."
         }
         Catch {
@@ -1305,7 +1328,7 @@ Class Hive {
         Cancel hot water boost.
     #>
     [string] CancelHotWaterBoostMode() {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
         
         # Update nodes
         $this.Products = $this.GetProducts()
@@ -1335,7 +1358,7 @@ Class Hive {
         Save hot water schedule to a file.
     #>
     [void] SaveHotWaterScheduleToFile([System.IO.DirectoryInfo] $DirectoryPath) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
         If (-not $DirectoryPath.Exists) {$this.ReturnError("The path should already exist.")}
 
         # Update nodes data
@@ -1370,7 +1393,7 @@ Class Hive {
         schedule first using SaveHeatingScheduleToFile().
     #>
     [string] SetHotWaterScheduleFromFile([System.IO.FileInfo] $FilePath) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
         If (-not (Test-Path -Path $FilePath )) {$this.ReturnError("The file path supplied does not exist.")}
 
         # Update nodes data
@@ -1395,7 +1418,7 @@ Class Hive {
         # Seven days of events in the file?
         If (((($Settings.schedule).psobject.Members | Where-Object {$_.MemberType -eq 'NoteProperty'}).count) -eq 7) {
             Try {
-                $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/hotwater/$($HotWater.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+                $Response = Invoke-HiveApiRequest -Auth $this.Auth -Method Post -Uri "$($this.ApiUrl)/nodes/hotwater/$($HotWater.id)" -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
                 Return "Schedule set successfully from $FilePath"
             }
             Catch {
@@ -1410,7 +1433,7 @@ Class Hive {
         Retrieves the status of a named motion sensor.
     #>
     [psobject] GetMotionSensorState([string] $SensorName, [bool] $IncludeTodaysEvents) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
         Try {
             $this.Products = $this.GetProducts()
             $this.Devices = $this.GetDevices()
@@ -1427,7 +1450,7 @@ Class Hive {
                 Try {
                     $TodayStart = Get-Date -Hour 0 -Minute 0 -Second 0
                     $TodayEnd = Get-Date -Hour 23 -Minute 59 -Second 59
-                    $Response = Invoke-RestMethod -Method Get -Uri "$($this.ApiUrl)/products/motionsensor/$($SensorNode.id)/events?from=$($this.DateTimeToUnixTimestamp($TodayStart))&to=$($this.DateTimeToUnixTimestamp($TodayEnd))" -Headers $this.Headers
+                    $Response = Invoke-HiveApiRequest -Auth $this.Auth -Method Get -Uri "$($this.ApiUrl)/products/motionsensor/$($SensorNode.id)/events?from=$($this.DateTimeToUnixTimestamp($TodayStart))&to=$($this.DateTimeToUnixTimestamp($TodayEnd))"
                 }
                 Catch {
                     $this.ReturnError($_)
@@ -1471,7 +1494,7 @@ Class Hive {
         Retrieves the status of a named contact (window/door) sensor and its event history.
     #>
     [psobject] GetContactSensorState([string] $SensorName, [bool] $IncludeTodaysEvents) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
         Try {
             $this.Products = $this.GetProducts()
             $this.Devices = $this.GetDevices()
@@ -1488,7 +1511,7 @@ Class Hive {
                 Try {
                     $TodayStart = Get-Date -Hour 0 -Minute 0 -Second 0
                     $TodayEnd = Get-Date -Hour 23 -Minute 59 -Second 59
-                    $Response = Invoke-RestMethod -Method Get -Uri "$($this.ApiUrl)/products/contactsensor/$($SensorNode.id)/events?from=$($this.DateTimeToUnixTimestamp($TodayStart))&to=$($this.DateTimeToUnixTimestamp($TodayEnd))" -Headers $this.Headers
+                    $Response = Invoke-HiveApiRequest -Auth $this.Auth -Method Get -Uri "$($this.ApiUrl)/products/contactsensor/$($SensorNode.id)/events?from=$($this.DateTimeToUnixTimestamp($TodayStart))&to=$($this.DateTimeToUnixTimestamp($TodayEnd))"
                 }
                 Catch {
                     $this.ReturnError($_)
@@ -1527,7 +1550,7 @@ Class Hive {
         During tests, no data older than 128 days was available so the limit is set at 120 in the class and errors on purpose.
     #>
     [psobject] GetHeatingHistory([datetime] $StartDate, [datetime] $EndDate, [string] $ZoneName) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
         If ($EndDate -gt (Get-Date)) {$this.ReturnError("The end date provided cannot be in the future.")}
         If ($StartDate -lt ((Get-Date).AddDays(-120))) {$this.ReturnError("The start date provided cannot be older than 120 days.")}
 
@@ -1541,7 +1564,7 @@ Class Hive {
             If ($HeatingNode -isnot [object]) { $this.ReturnError("No heating zones matching the name provided: `"$ZoneName`" were found.") }
 
             Try {
-                $Response = Invoke-RestMethod -Method Get -Uri "$($this.ApiUrl)/history/heating/$($HeatingNode.id)?start=$($this.DateTimeToUnixTimestamp($StartDate))&end=$($this.DateTimeToUnixTimestamp($EndDate))&timeUnit=DAYS&rate=1&operation=AVG" -Headers $this.Headers
+                $Response = Invoke-HiveApiRequest -Auth $this.Auth -Method Get -Uri "$($this.ApiUrl)/history/heating/$($HeatingNode.id)?start=$($this.DateTimeToUnixTimestamp($StartDate))&end=$($this.DateTimeToUnixTimestamp($EndDate))&timeUnit=DAYS&rate=1&operation=AVG"
             }
             Catch {
                 $this.ReturnError($_)
@@ -1655,7 +1678,7 @@ Class Hive {
         I STRONGLY recommend that you do not run this 24/7.
     #>
     [bool] GetHeatingState([string] $ZoneName) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
 
         # Update nodes data
         $this.Products = $this.GetProducts()
@@ -1674,7 +1697,7 @@ Class Hive {
 
     # Get the state of the hot water (of on or off)
     [bool] GetHotWaterState([string] $ZoneName) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
 
         # Update nodes data
         $this.Products = $this.GetProducts()
@@ -1716,7 +1739,7 @@ Class Hive {
         Gets an ordered list of properties and their values of the named bulb.
     #>
     [psobject] GetColourBulbConfig([string]$Name) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
 
         # Update nodes
         $this.Products = $this.GetProducts()
@@ -1748,7 +1771,7 @@ Class Hive {
         Gets an ordered list of properties and their values of the named bulb.
     #>
     [psobject] GetWhiteBulbConfig([string]$Name) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
 
         # Update nodes
         $this.Products = $this.GetProducts()
@@ -1778,7 +1801,7 @@ Class Hive {
         Uses a boolean as opposed to a text value.
     #>
     [string] SetColourBulbState([bool]$State, [string]$Name) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
 
         # Update nodes
         $this.Products = $this.GetProducts()
@@ -1811,7 +1834,7 @@ Class Hive {
         }
 
         Try {
-            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/$($ColourBulb.type)/$($ColourBulb.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+            $Response = Invoke-HiveApiRequest -Auth $this.Auth -Method Post -Uri "$($this.ApiUrl)/nodes/$($ColourBulb.type)/$($ColourBulb.id)" -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
         }
         Catch {
             $this.ReturnError($_)
@@ -1826,7 +1849,7 @@ Class Hive {
         Uses a boolean as opposed to a text value.
     #>
     [string] SetWhiteBulbState([bool]$State, [string]$Name) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
 
         # Update nodes
         $this.Products = $this.GetProducts()
@@ -1859,7 +1882,7 @@ Class Hive {
         }
 
         Try {
-            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/$($WhiteBulb.type)/$($WhiteBulb.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+            $Response = Invoke-HiveApiRequest -Auth $this.Auth -Method Post -Uri "$($this.ApiUrl)/nodes/$($WhiteBulb.type)/$($WhiteBulb.id)" -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
         }
         Catch {
             $this.ReturnError($_)
@@ -1875,7 +1898,7 @@ Class Hive {
         $this.Products and $this.Devices is always refreshed prior to execution.
     #>
     [psobject] SetColourBulbWhite([string] $Name, [int] $Temperature, [int] $Brightness) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
 
         # Update nodes
         $this.Products = $this.GetProducts()
@@ -1913,7 +1936,7 @@ Class Hive {
         }
 
         Try {
-            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/$($ColourBulb.type)/$($ColourBulb.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+            $Response = Invoke-HiveApiRequest -Auth $this.Auth -Method Post -Uri "$($this.ApiUrl)/nodes/$($ColourBulb.type)/$($ColourBulb.id)" -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
             Return $Response #"Colour bulb set successfully."
         }
         Catch {
@@ -1927,7 +1950,7 @@ Class Hive {
         $this.Products and $this.Devices is always refreshed prior to execution.
     #>
     [psobject] SetWhiteBulbWhite([string] $Name, [int] $Temperature, [int] $Brightness) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
 
         # Update nodes
         $this.Products = $this.GetProducts()
@@ -1965,7 +1988,7 @@ Class Hive {
         }
 
         Try {
-            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/$($WhiteBulb.type)/$($WhiteBulb.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+            $Response = Invoke-HiveApiRequest -Auth $this.Auth -Method Post -Uri "$($this.ApiUrl)/nodes/$($WhiteBulb.type)/$($WhiteBulb.id)" -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
             Return $Response #"Colour bulb set successfully."
         }
         Catch {
@@ -1979,7 +2002,7 @@ Class Hive {
         Technically you don't have control over saturation on the Hive web app.
     #>
     [psobject] SetColourBulbColour([string] $Name, [int] $Hue, [int] $Saturation, [int] $Brightness) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
 
         # Update nodes
         $this.Products = $this.GetProducts()
@@ -2025,7 +2048,7 @@ Class Hive {
         }
 
         Try {
-            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/$($ColourBulb.type)/$($ColourBulb.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+            $Response = Invoke-HiveApiRequest -Auth $this.Auth -Method Post -Uri "$($this.ApiUrl)/nodes/$($ColourBulb.type)/$($ColourBulb.id)" -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
             Return $Response #"Colour bulb set successfully."
         }
         Catch {
@@ -2041,7 +2064,7 @@ Class Hive {
         as there is no previous configuration setting on Colour Lights.
     #>
     [string] SetColourBulbMode([DeviceMode]$Mode, [string]$Name) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
 
         # Update nodes
         $this.Products = $this.GetProducts()
@@ -2074,7 +2097,7 @@ Class Hive {
         }
 
         Try {
-            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/$($ColourBulb.type)/$($ColourBulb.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+            $Response = Invoke-HiveApiRequest -Auth $this.Auth -Method Post -Uri "$($this.ApiUrl)/nodes/$($ColourBulb.type)/$($ColourBulb.id)" -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
         }
         Catch {
             $this.ReturnError($_)
@@ -2091,7 +2114,7 @@ Class Hive {
         as there is no previous configuration setting on Tuneable/White Lights.
     #>
     [string] SetWhiteBulbMode([DeviceMode]$Mode, [string]$Name) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
 
         # Update nodes
         $this.Products = $this.GetProducts()
@@ -2124,7 +2147,7 @@ Class Hive {
         }
 
         Try {
-            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/$($WhiteBulb.type)/$($WhiteBulb.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+            $Response = Invoke-HiveApiRequest -Auth $this.Auth -Method Post -Uri "$($this.ApiUrl)/nodes/$($WhiteBulb.type)/$($WhiteBulb.id)" -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
         }
         Catch {
             $this.ReturnError($_)
@@ -2165,7 +2188,7 @@ Class Hive {
         Specify a directory ONLY - the file will be named HiveActivePlugSchedule-yyyyMMddHHmm.json
     #>
     [void] SaveColourBulbScheduleToFile([System.IO.DirectoryInfo] $DirectoryPath, [string] $Name) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
         If (-not $DirectoryPath.Exists) {$this.ReturnError("The path should already exist.")}
 
         # Update nodes data
@@ -2204,7 +2227,7 @@ Class Hive {
         Specify a directory ONLY - the file will be named HiveActivePlugSchedule-yyyyMMddHHmm.json
     #>
     [void] SaveWhiteBulbScheduleToFile([System.IO.DirectoryInfo] $DirectoryPath, [string] $Name) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
         If (-not $DirectoryPath.Exists) {$this.ReturnError("The path should already exist.")}
 
         # Update nodes data
@@ -2246,7 +2269,7 @@ Class Hive {
         then upload it to all the other colour bulbs identified by their name.
     #>
     [string] SetColourBulbScheduleFromFile([System.IO.FileInfo] $FilePath, [string] $Name) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
         If (-not (Test-Path -Path $FilePath )) {$this.ReturnError("The file path supplied does not exist.")}
 
         # Update nodes data
@@ -2276,7 +2299,7 @@ Class Hive {
         # Seven days of events in the file?
         If (((($Settings.schedule).psobject.Members | Where-Object {$_.MemberType -eq 'NoteProperty'}).count) -eq 7) {
             Try {
-                $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/$($ColourBulb.type)/$($ColourBulb.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+                $Response = Invoke-HiveApiRequest -Auth $this.Auth -Method Post -Uri "$($this.ApiUrl)/nodes/$($ColourBulb.type)/$($ColourBulb.id)" -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
                 Return "$($ColourBulb.state.name) schedule set successfully from `"$FilePath`""
             }
             Catch {
@@ -2295,7 +2318,7 @@ Class Hive {
         then upload it to all the other tuneable/white bulbs identified by their name.
     #>
     [string] SetWhiteBulbScheduleFromFile([System.IO.FileInfo] $FilePath, [string] $Name) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
         If (-not (Test-Path -Path $FilePath )) {$this.ReturnError("The file path supplied does not exist.")}
 
         # Update nodes data
@@ -2325,7 +2348,7 @@ Class Hive {
         # Seven days of events in the file?
         If (((($Settings.schedule).psobject.Members | Where-Object {$_.MemberType -eq 'NoteProperty'}).count) -eq 7) {
             Try {
-                $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/nodes/$($WhiteBulb.type)/$($WhiteBulb.id)" -Headers $this.Headers -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
+                $Response = Invoke-HiveApiRequest -Auth $this.Auth -Method Post -Uri "$($this.ApiUrl)/nodes/$($WhiteBulb.type)/$($WhiteBulb.id)" -Body (ConvertTo-Json $Settings -Depth 99 -Compress)
                 Return "$($WhiteBulb.state.name) schedule set successfully from `"$FilePath`""
             }
             Catch {
@@ -2358,9 +2381,9 @@ Class Hive {
         Get Actions data
     #>
     [psobject] GetActions() {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
         Try {
-            $Response = Invoke-RestMethod -Method Get -Uri "$($this.ApiUrl)/actions" -Headers $this.Headers -ErrorAction Stop
+            $Response = Invoke-HiveApiRequest -Auth $this.Auth -Method Get -Uri "$($this.ApiUrl)/actions"
             Return $Response
         }
         Catch {
@@ -2373,7 +2396,7 @@ Class Hive {
         Get Actions data as a list
     #>
     [psobject] GetActionsList() {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
         Try {
             $Response = $this.GetActions()
 
@@ -2399,9 +2422,9 @@ Class Hive {
         Get Actions data
     #>
     [psobject] InvokeAction([guid]$id) {
-        If (-not $this.ApiSessionId) {$this.ReturnError("No ApiSessionId - must log in first.")}
+        If (-not $this.Auth) {$this.ReturnError("Not logged in - call Login() first.")}
         Try {
-            $Response = Invoke-RestMethod -Method Post -Uri "$($this.ApiUrl)/actions/$id/quick-action" -Headers $this.Headers -ErrorAction Stop
+            $Response = Invoke-HiveApiRequest -Auth $this.Auth -Method Post -Uri "$($this.ApiUrl)/actions/$id/quick-action"
             Return $Response
         }
         Catch {
