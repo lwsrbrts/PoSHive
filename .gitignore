@@ -45,3 +45,7 @@ $RECYCLE.BIN/
 Network Trash Folder
 Temporary Items
 .apdisk
+
+# Local schedule/hot-water/plug backups exported by Save*ToFile() methods
+# (personal data - backups belong outside the repo anyway)
+schedule-backups/
