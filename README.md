@@ -1,8 +1,8 @@
-**30th September 2020** - British Gas have implemented Secure Remote Password authentication for all logons which basically means the method of authenticating with the API that I am using no longer works which, for all intents and purposes completely breaks this module. In the absence of any understanding of SRP, I'm afraid that means the module is basically dead.
+**3.0.0 (2025)** - Rebuilt authentication for the AWS Cognito + SMS one-time-code login that British Gas introduced in 2020 (which broke all previous PoSHive versions). PoSHive now performs the SRP handshake in pure PowerShell, registers and "remembers" your machine, and caches tokens in a DPAPI-encrypted local file - so the SMS code is only needed on a first login per machine. **Requires PowerShell 7+.**
 
 # PoSHive
 
-A PowerShell class (supporting Windows PowerShell 5.1 or PowerShell Core 6.0+) to control your British Gas Hive system including the heating, hot water, multi zone, active plugs,  sensors and colour bulbs.
+A PowerShell class (PowerShell 7+) to control your British Gas Hive system including the heating, hot water, multi zone, active plugs,  sensors and colour bulbs.
 
 > **This project is not sanctioned by or affiliated with British Gas or Hive in any way.**
 
@@ -22,6 +22,7 @@ Or [download from the releases](https://github.com/lwsrbrts/PoSHive/releases) pa
 
 __Not all of the commands are covered in this read me (it's getting too long). Please see the [Wiki](https://github.com/lwsrbrts/PoSHive/wiki) for more information__
 
+* [**3.0.0 - Cognito + SMS OTP**](https://github.com/lwsrbrts/PoSHive/releases) - Sign-in rebuilt against AWS Cognito SRP with SMS one-time codes, device registration/remember-me, encrypted token cache, and new `Connect-Hive` / `Complete-HiveLogin` / `Disconnect-Hive` / `Get-HiveAuthState` cmdlets. PowerShell 7+ only.
 * [**2.3.0 - Colour Light**](https://github.com/lwsrbrts/PoSHive/releases/tag/v2.3.0) - 21/01/2018 - Support for Colour Lights (not tuneable).
 * **2.2.0 - History** - 18/01/2018 - Added the ability to retrieve historical daily average temperature data from the Hive API up to 120 days in the past and produce either an object or a column chart using Google Charts for instant visualisation.
 * [**2.1.0 - Sensing**](https://github.com/lwsrbrts/PoSHive/releases/tag/v2.1.0) - 04/08/2017 - Sensor support for both motion and contact sensors. Since there's no activities, these are just Get operations.
@@ -37,7 +38,7 @@ __Not all of the commands are covered in this read me (it's getting too long). P
 
 ## Purpose
 
-The purpose of this class is to enable you to use PowerShell (v5) scripting to exert more powerful logic control over the state of your Hive system.
+The purpose of this class is to enable you to use PowerShell (v7) scripting to exert more powerful logic control over the state of your Hive system.
 The class allows you to set most if not all of the same functionality as provided by the Hive website for your Hive system; including control of Heating, Multi-zone Heating, Hot Water, Active Plugs, Sensors, Schedules for each, as well as Holiday mode. Additionally, it allows you to more easily expose information about the system and its settings to enable you to perform powerful logic operations. If you find a bug or have a feature request, please open a new issue or let me know so I can resolve it.
 
 ## What can't it do
@@ -72,31 +73,78 @@ The class is published on the [PowerShell Gallery](https://www.powershellgallery
 Install-Module -Name PoSHive
 ```
 
-You can always just download the latest [release](https://github.com/lwsrbrts/PoSHive/releases) and copy the `PoSHive.ps1` file to an appropriate folder.
+You can always just download the latest [release](https://github.com/lwsrbrts/PoSHive/releases) and copy the whole module folder (it contains `PoSHive.psd1`, `PoSHive.psm1` plus the `private/` and `public/` folders) to an appropriate location.
 
-### Import the class in to PowerShell session
+### Import the module in to PowerShell session
 
-If you have installed the class from the PowerShell Gallery, use:
+If you have installed the module from the PowerShell Gallery, use:
 
 ```powershell
 Import-Module -Name PoSHive
 ```
 
-If however you have copied the file to a folder, use:
+If however you have copied the folder somewhere, use:
 
 ```powershell
-Import-Module D:\PoSHive\PoSHive.ps1
+Import-Module D:\PoSHive\PoSHive.psd1
+```
+
+To use the `Hive` class as a type (e.g. `[Hive]::new()`) in a script or your profile, add this as the *first statement* of the file:
+
+```powershell
+using module PoSHive
+```
+
+### Sign in (Connect-Hive)
+
+Authentication happens through the `Connect-Hive` cmdlet, which handles the
+whole AWS Cognito flow: SRP password proof, SMS one-time code (the first
+time), device registration and the encrypted token cache.
+
+```powershell
+Connect-Hive -Credential (Get-Credential)
+```
+
+The first sign-in on a machine sends an SMS code, which you'll be prompted
+for. PoSHive then registers and "remembers" the device, so future sign-ins
+are silent. Resolution order on every `Connect-Hive`:
+
+1. cached tokens still valid → reused as-is
+2. cached refresh token → silent renewal
+3. remembered device → silent device login (no SMS)
+4. fresh username/password login → SMS OTP (rare after the first time)
+
+Headless/automation use: park the challenge and finish separately, so no
+prompt is needed:
+
+```powershell
+Connect-Hive -Credential $cred -NoPrompt   # sends the SMS, returns WaitingForSmsCode
+Complete-HiveLogin -Code 123456            # finish once the code arrives
+```
+
+Other auth cmdlets:
+
+```powershell
+Get-HiveAuthState                # what would happen on the next sign-in
+Disconnect-Hive                  # clear the local cache (device stays remembered)
+Disconnect-Hive -ForgetDevice    # also unregister the device with Cognito
 ```
 
 ### Instantiate the class
 
-Takes two [string] parameters for username and password, in that order. There are two ways to instantiate.
+If a cached session exists on this machine, the no-argument constructor plus
+`Login()` reuses it. Otherwise pass credentials to the constructor (or to
+`Login()`):
 
 ```powershell
-$h = [Hive]::new('user@domain.com', 'myhivewebsitepassword')
-# or
-$h = New-Object -TypeName Hive -ArgumentList ('user@domain.com', 'myhivewebsitepassword')
+using module PoSHive
 
+$h = [Hive]::new()
+$h.Login()                       # silent if a cached/remembered session exists
+
+# or explicitly:
+$h = [Hive]::new('user@domain.com', 'myhivewebsitepassword')
+$h.Login()                       # prompts for an SMS code only if required
 ```
 
 ### Properties and methods
@@ -152,7 +200,6 @@ SetHotWaterMode               Method     psobject SetHotWaterMode(HeatingMode Mo
 SetHotWaterScheduleFromFile   Method     string SetHotWaterScheduleFromFile(System.IO.FileInfo FilePath)
 SetTemperature                Method     psobject SetTemperature(double targetTemperature), psobject SetTemperature(string ZoneName, double targetTemperature)
 ToString                      Method     string ToString()
-ApiSessionId                  Property   string ApiSessionId {get;set;}
 ApiUrl                        Property   uri ApiUrl {get;set;}
 Devices                       Property   psobject Devices {get;set;}
 Password                      Property   securestring Password {get;set;}
@@ -164,10 +211,13 @@ Username                      Property   string Username {get;set;}
 
 ### Log in to the Hive API
 
-Simply logs in to the Hive API. A session id is assigned by the Hive API that is used for subsequent communications and acts as your authorisation token.
+`Login()` authenticates through `Connect-Hive` (see above) and loads your
+user profile. On success `$h.User` is populated and the data methods below
+work until the session expires; expired sessions are refreshed automatically
+on the next API call.
 
 ```powershell
-$h.Login() # Returns nothing but check $h.ApiSessionId for success.
+$h.Login()   # Returns nothing; silent unless an SMS code is genuinely required.
 ```
 
 ### Get details about the products (devices)
@@ -444,11 +494,38 @@ $h.GetContactSensorState('Win/Door Sensor 1', $true) # Returns a psobject with s
 
 ### Log out
 
-The session will automatically expire from the Hive API in approx 20 minutes but if you're performing just a few actions, log out anyway.
+`Logout()` clears the in-memory session. Your cached tokens remain on disk
+(encrypted), so the next `Login()` is silent; use `Disconnect-Hive
+-ForgetDevice` to fully unregister the machine.
 
 ```powershell
-$h.Logout() # Returns "Logged out successfully."
+$h.Logout() # Returns a message confirming the local session was cleared.
 ```
+
+## Token cache & security notes
+
+* PoSHive stores its session (ID token, access token, refresh token, device
+  key and device password) in `%USERPROFILE%\.poshive\hive-device.json`.
+* The secret parts of that file are encrypted with Windows DPAPI, bound to
+  your Windows user account. The file is useless to other users/machines.
+* Delete the file (or run `Disconnect-Hive`) to sign PoSHive out completely.
+* No credentials are ever written to disk - only Cognito's session material.
+* The module retries a transient failure at most once and never loops on
+  throttled (`403`/`ThrottlingException`) responses, to avoid hammering the
+  Hive/Cognito APIs.
+
+## Testing
+
+The auth engine is validated offline with Pester (no Hive account needed):
+
+```powershell
+Invoke-Pester -Path .\tests
+```
+
+`tests/SrpKnownAnswers.json` proves the SRP/HKDF maths is byte-identical
+to the reference implementations used by Home Assistant's Hive
+integration. The vectors were derived once from pyhive and confirmed
+against live logins; treat the file as fixed test data.
 
 ## Mentions
 
