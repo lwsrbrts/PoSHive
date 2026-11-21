@@ -49,3 +49,6 @@ Temporary Items
 # Local schedule/hot-water/plug backups exported by Save*ToFile() methods
 # (personal data - backups belong outside the repo anyway)
 schedule-backups/
+
+# Local code review / working notes (may become GitHub issues later)
+CODE_REVIEW.md
