@@ -1641,13 +1641,15 @@ Class Hive {
                 t32 = @{R = 185; G = 32; B = 59}
             }
 
-            # Format the data suitable for Google Charts output
-            $String = @{}
-            $String = foreach ($Entry in $HistoryData) {
+            # Format the data suitable for Google Charts output.
+            # Wrapped in @() and joined with commas so that a single-row
+            # (foreach returns a bare scalar string) or zero-row (returns
+            # null) result doesn't break the index/TrimEnd tidy-up the old
+            # code needed to drop the trailing comma.
+            $String = @(foreach ($Entry in $HistoryData) {
                 $RGB = $ColourTemps.Get_Item("t$([Math]::Floor($Entry.temperature))")
-                "[new Date($($Entry.date.Year),$($Entry.date.Month - 1),$($Entry.date.Day)),$($Entry.temperature),'color: rgb($($RGB.R),$($RGB.G),$($RGB.B))'],"
-            }
-            $String[$String.Count - 1] = $String[$String.Count - 1].TrimEnd(',')
+                "[new Date($($Entry.date.Year),$($Entry.date.Month - 1),$($Entry.date.Day)),$($Entry.temperature),'color: rgb($($RGB.R),$($RGB.G),$($RGB.B))']"
+            }) -join ','
 
             $MinifiedChartCode = '<html><head><link href="https://fonts.googleapis.com/css?family=Roboto" rel="stylesheet"><script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script><script type="text/javascript">function drawChart(){var t=new google.visualization.DataTable;t.addColumn("date","Date"),t.addColumn("number","Temperature"),t.addColumn({type:"string",role:"style"}),t.addRows(["%%fragment%%"]);var e={title:"Temperature Trend %%period%%",titleTextStyle:{fontName:"Roboto",fontSize:18},tooltip:{textStyle:{color:"black",fontName:"Roboto, Arial",fontSize:"12"}},chartArea:{left:"5%",top:100,width:"90%",height:400},legend:"none",animation:{duration:700,easing:"out",startup:!0},bar:{groupWidth:"91.2%"},vAxis:{minValue:0,gridlines:{color:"transparent"},textStyle:{color:"black",fontName:"Roboto, Arial",fontSize:14}},hAxis:{format:"MMM dd",gridlines:{count:31,color:"transparent"},textStyle:{color:"black",fontName:"Roboto, Arial",fontSize:12},showTextEvery:2,minTextSpacing:1},width:1400,height:600},o=new google.visualization.ColumnChart(document.getElementById("chart_div"));o.draw(t,e)}google.charts.load("current",{packages:["corechart"]}),google.charts.setOnLoadCallback(drawChart)</script></head><body><div id="chart_div"></div><div id="chart_png"></div></body></html>'
             
